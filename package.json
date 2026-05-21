@@ -21,6 +21,7 @@
   "dependencies": {
     "@fastify/cookie": "^11.0.1",
     "@fastify/formbody": "^8.0.1",
+    "@fastify/rate-limit": "^10.2.1",
     "@prisma/client": "^5.20.0",
     "axios": "^1.7.7",
     "discord.js": "^14.16.3",

@@ -1,7 +1,7 @@
 interface LayoutOptions {
   title: string;
   body: string;
-  active?: "home" | "products" | "stock" | "orders";
+  active?: "home" | "products" | "stock" | "orders" | "analytics";
   flash?: { kind: "success" | "error" | "info"; message: string } | null;
   pageTitle?: string;
   pageSubtitle?: string;
@@ -20,10 +20,9 @@ export function escapeHtml(s: string | number | null | undefined): string {
 
 /**
  * Mini icon library — inline SVG strings (Lucide-style).
- * Pakai: icon("name", "w-5 h-5")
  */
 const ICONS: Record<string, string> = {
-  dashboard: `<path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/>`,
+  dashboard: `<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>`,
   package: `<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>`,
   bag: `<path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/>`,
   trending_up: `<polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>`,
@@ -42,12 +41,67 @@ const ICONS: Record<string, string> = {
   zap: `<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>`,
   user: `<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>`,
   database: `<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>`,
+  chart: `<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="3" y1="20" x2="21" y2="20"/>`,
+  sparkles: `<path d="M12 3l1.9 5.8L20 11l-6.1 2.2L12 19l-1.9-5.8L4 11l6.1-2.2z"/><path d="M19 3l.7 2.3L22 6l-2.3.7L19 9l-.7-2.3L16 6l2.3-.7z"/>`,
 };
 
 export function icon(name: string, cls = "w-4 h-4"): string {
   const path = ICONS[name];
   if (!path) return "";
   return `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${path}</svg>`;
+}
+
+const FAVICON =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='3' y='11' width='18' height='10' rx='2' fill='%2322d3ee'/%3E%3Ccircle cx='12' cy='5' r='2' fill='%23a78bfa'/%3E%3C/svg%3E";
+
+/** Shared <head> dengan font, Tailwind, theme variables. */
+function commonHead(title: string): string {
+  return `<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <title>${escapeHtml(title)} · botnot</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <link rel="icon" href="${FAVICON}" />
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+          },
+        },
+      },
+    };
+  </script>
+  <style>
+    html { font-feature-settings: 'cv11', 'ss01', 'ss03'; }
+    body { font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+    code, pre, .font-mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+    [hx-confirm] { cursor: pointer; }
+    /* Background pattern */
+    .bg-grid {
+      background-image: radial-gradient(circle at 1px 1px, rgba(255,255,255,0.022) 1px, transparent 0);
+      background-size: 28px 28px;
+    }
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 5px; border: 2px solid transparent; background-clip: content-box; }
+    ::-webkit-scrollbar-thumb:hover { background: #334155; background-clip: content-box; }
+    /* Selection */
+    ::selection { background: rgba(34,211,238,0.25); color: #ecfeff; }
+    /* Subtle card border glow on hover */
+    .card-hover { transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s; }
+    .card-hover:hover { border-color: rgb(51 65 85); transform: translateY(-1px); box-shadow: 0 8px 24px -8px rgba(0,0,0,0.5); }
+    /* Form focus glow */
+    input:focus, textarea:focus, select:focus { box-shadow: 0 0 0 3px rgba(34,211,238,0.12); }
+  </style>
+</head>`;
 }
 
 export function layout({
@@ -67,13 +121,14 @@ export function layout({
   ) => {
     const isActive = active === id;
     return `
-    <a href="${href}" class="group flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition ${
+    <a href="${href}" class="group relative flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium transition ${
       isActive
-        ? "bg-gradient-to-r from-cyan-500/15 to-violet-500/10 text-cyan-300 ring-1 ring-cyan-500/20"
-        : "text-slate-400 hover:text-slate-100 hover:bg-slate-800/60"
+        ? "bg-slate-800/60 text-slate-100 ring-1 ring-slate-700"
+        : "text-slate-400 hover:text-slate-100 hover:bg-slate-800/40"
     }">
+      ${isActive ? `<span class="absolute -bottom-px left-2.5 right-2.5 h-px bg-gradient-to-r from-cyan-400 to-violet-400"></span>` : ""}
       <span class="${isActive ? "text-cyan-300" : "text-slate-500 group-hover:text-slate-300"}">${icon(iconName, "w-4 h-4")}</span>
-      ${label}
+      <span>${label}</span>
     </a>`;
   };
 
@@ -90,90 +145,76 @@ export function layout({
       </div>`
     : "";
 
-  const breadcrumbHtml = breadcrumb && breadcrumb.length > 0
-    ? `<nav class="flex items-center gap-1.5 text-xs text-slate-500 mb-2">
+  const breadcrumbHtml =
+    breadcrumb && breadcrumb.length > 0
+      ? `<nav class="flex items-center gap-1.5 text-xs text-slate-500 mb-2">
         ${breadcrumb
           .map((b, i) => {
             const isLast = i === breadcrumb.length - 1;
             const sep = i > 0 ? `<span class="text-slate-700">/</span>` : "";
-            const item = b.href && !isLast
-              ? `<a href="${escapeHtml(b.href)}" class="hover:text-slate-300 transition">${escapeHtml(b.label)}</a>`
-              : `<span class="${isLast ? "text-slate-300" : ""}">${escapeHtml(b.label)}</span>`;
+            const item =
+              b.href && !isLast
+                ? `<a href="${escapeHtml(b.href)}" class="hover:text-slate-300 transition">${escapeHtml(b.label)}</a>`
+                : `<span class="${isLast ? "text-slate-300" : ""}">${escapeHtml(b.label)}</span>`;
             return sep + item;
           })
           .join("")}
       </nav>`
-    : "";
+      : "";
 
   const pageHeader = pageTitle
     ? `<div class="mb-8">
         ${breadcrumbHtml}
-        <h1 class="text-3xl font-bold tracking-tight bg-gradient-to-r from-slate-100 to-slate-300 bg-clip-text text-transparent">${escapeHtml(pageTitle)}</h1>
+        <h1 class="text-3xl font-bold tracking-tight text-slate-50">${escapeHtml(pageTitle)}</h1>
         ${pageSubtitle ? `<p class="text-slate-400 text-sm mt-1.5">${escapeHtml(pageSubtitle)}</p>` : ""}
       </div>`
     : "";
 
   return `<!DOCTYPE html>
 <html lang="id">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
-  <title>${escapeHtml(title)} · botnot</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='3' y='11' width='18' height='10' rx='2' fill='%2322d3ee'/%3E%3Ccircle cx='12' cy='5' r='2' fill='%23a78bfa'/%3E%3C/svg%3E" />
-  <style>
-    body { font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif; }
-    [hx-confirm] { cursor: pointer; }
-    /* Subtle grid pattern background */
-    body::before {
-      content: '';
-      position: fixed;
-      inset: 0;
-      background-image: radial-gradient(circle at 1px 1px, rgba(255,255,255,0.025) 1px, transparent 0);
-      background-size: 32px 32px;
-      pointer-events: none;
-      z-index: 0;
-    }
-    main, header { position: relative; z-index: 1; }
-    /* Scrollbar polish */
-    ::-webkit-scrollbar { width: 10px; height: 10px; }
-    ::-webkit-scrollbar-track { background: #0f172a; }
-    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 5px; }
-    ::-webkit-scrollbar-thumb:hover { background: #475569; }
-  </style>
-</head>
-<body class="bg-slate-950 text-slate-100 min-h-screen">
-  <header class="border-b border-slate-800/80 bg-slate-950/80 backdrop-blur-md sticky top-0 z-20">
-    <div class="max-w-7xl mx-auto px-6 py-3 flex items-center gap-3">
-      <a href="/admin" class="flex items-center gap-2.5 group">
-        <span class="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-400 to-violet-500 grid place-items-center text-slate-950 group-hover:scale-105 transition">
-          ${icon("bot", "w-5 h-5")}
-        </span>
-        <span class="font-bold text-lg bg-gradient-to-r from-cyan-300 to-violet-300 bg-clip-text text-transparent tracking-tight">botnot</span>
-      </a>
-      <nav class="ml-6 flex gap-1">
-        ${navItem("home", "/admin", "Dashboard", "dashboard")}
-        ${navItem("products", "/admin/products", "Produk", "package")}
-        ${navItem("orders", "/admin/orders", "Order", "bag")}
-      </nav>
-      <div class="ml-auto flex items-center gap-2">
-        <a href="/setup" class="text-xs text-slate-500 hover:text-cyan-300 transition px-2 py-1.5 hidden sm:flex items-center gap-1.5" title="Buka setup wizard">
-          ${icon("zap", "w-3.5 h-3.5")} Setup
+${commonHead(title)}
+<body class="bg-slate-950 text-slate-100 min-h-screen bg-grid">
+  <div class="min-h-screen flex flex-col">
+    <header class="border-b border-slate-800/60 bg-slate-950/85 backdrop-blur-md sticky top-0 z-20">
+      <div class="max-w-7xl mx-auto px-6 py-3 flex items-center gap-4">
+        <a href="/admin" class="flex items-center gap-2.5 group shrink-0">
+          <span class="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-400 via-cyan-500 to-violet-500 grid place-items-center text-slate-950 group-hover:scale-105 transition shadow-lg shadow-cyan-500/20">
+            ${icon("bot", "w-5 h-5")}
+          </span>
+          <span class="font-bold text-lg bg-gradient-to-r from-slate-100 to-slate-300 bg-clip-text text-transparent tracking-tight">botnot</span>
         </a>
-        <form method="POST" action="/admin/logout">
-          <button class="flex items-center gap-2 text-sm text-slate-400 hover:text-red-300 px-3 py-2 rounded-lg hover:bg-red-500/10 transition">
-            ${icon("logout", "w-4 h-4")} Logout
-          </button>
-        </form>
+        <nav class="flex gap-0.5 ml-4">
+          ${navItem("home", "/admin", "Dashboard", "dashboard")}
+          ${navItem("products", "/admin/products", "Produk", "package")}
+          ${navItem("orders", "/admin/orders", "Order", "bag")}
+          ${navItem("analytics", "/admin/analytics", "Analytics", "chart")}
+        </nav>
+        <div class="ml-auto flex items-center gap-2">
+          <a href="/setup" class="hidden md:flex items-center gap-1.5 text-xs text-slate-500 hover:text-cyan-300 transition px-2.5 py-1.5 rounded-lg hover:bg-slate-800/40" title="Buka setup wizard">
+            ${icon("zap", "w-3.5 h-3.5")} Setup
+          </a>
+          <form method="POST" action="/admin/logout">
+            <button class="flex items-center gap-2 text-sm text-slate-400 hover:text-red-300 px-3 py-2 rounded-lg hover:bg-red-500/10 transition">
+              ${icon("logout", "w-4 h-4")} <span class="hidden sm:inline">Logout</span>
+            </button>
+          </form>
+        </div>
       </div>
-    </div>
-  </header>
-  <main class="max-w-7xl mx-auto px-6 py-8">
-    ${pageHeader}
-    ${flashHtml}
-    ${body}
-  </main>
+    </header>
+
+    <main class="flex-1 max-w-7xl w-full mx-auto px-6 py-8">
+      ${pageHeader}
+      ${flashHtml}
+      ${body}
+    </main>
+
+    <footer class="border-t border-slate-800/40 mt-auto">
+      <div class="max-w-7xl mx-auto px-6 py-4 text-xs text-slate-600 flex items-center justify-between">
+        <span>botnot · auto-order Telegram &amp; Discord</span>
+        <span>v0.1.0</span>
+      </div>
+    </footer>
+  </div>
 </body>
 </html>`;
 }
@@ -181,60 +222,43 @@ export function layout({
 export function loginLayout(opts: { error?: string }): string {
   return `<!DOCTYPE html>
 <html lang="id">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
-  <title>Login · botnot admin</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='3' y='11' width='18' height='10' rx='2' fill='%2322d3ee'/%3E%3Ccircle cx='12' cy='5' r='2' fill='%23a78bfa'/%3E%3C/svg%3E" />
-  <style>
-    body { font-family: 'Inter', 'Segoe UI', system-ui, sans-serif; }
-    body::before {
-      content: '';
-      position: fixed;
-      inset: 0;
-      background:
-        radial-gradient(ellipse at top left, rgba(34,211,238,0.08), transparent 50%),
-        radial-gradient(ellipse at bottom right, rgba(167,139,250,0.08), transparent 50%);
-      pointer-events: none;
-    }
-    body::after {
-      content: '';
-      position: fixed;
-      inset: 0;
-      background-image: radial-gradient(circle at 1px 1px, rgba(255,255,255,0.025) 1px, transparent 0);
-      background-size: 32px 32px;
-      pointer-events: none;
-    }
-  </style>
-</head>
-<body class="bg-slate-950 text-slate-100 min-h-screen flex items-center justify-center px-4 relative">
+${commonHead("Login")}
+<body class="bg-slate-950 text-slate-100 min-h-screen flex items-center justify-center px-4 relative overflow-hidden">
+  <div class="absolute inset-0 bg-grid pointer-events-none"></div>
+  <div class="absolute inset-0 pointer-events-none"
+    style="background:
+      radial-gradient(ellipse 60% 50% at 20% 20%, rgba(34,211,238,0.08), transparent 60%),
+      radial-gradient(ellipse 50% 40% at 80% 80%, rgba(167,139,250,0.08), transparent 60%);">
+  </div>
+
   <div class="w-full max-w-sm relative z-10">
     <div class="flex items-center justify-center gap-3 mb-6">
-      <span class="w-12 h-12 rounded-2xl bg-gradient-to-br from-cyan-400 to-violet-500 grid place-items-center text-slate-950 shadow-lg shadow-cyan-500/20">
+      <span class="w-12 h-12 rounded-2xl bg-gradient-to-br from-cyan-400 via-cyan-500 to-violet-500 grid place-items-center text-slate-950 shadow-xl shadow-cyan-500/25">
         ${icon("bot", "w-7 h-7")}
       </span>
       <div>
-        <div class="font-bold text-2xl bg-gradient-to-r from-cyan-300 to-violet-300 bg-clip-text text-transparent leading-none">botnot</div>
+        <div class="font-bold text-2xl text-slate-100 leading-none tracking-tight">botnot</div>
         <div class="text-xs text-slate-500 mt-1">admin dashboard</div>
       </div>
     </div>
 
-    <form method="POST" action="/admin/login" class="bg-slate-900/70 backdrop-blur-sm border border-slate-800 rounded-2xl p-7 shadow-2xl shadow-slate-950/50">
-      <h1 class="text-xl font-semibold mb-1">Selamat datang kembali</h1>
+    <form method="POST" action="/admin/login" class="bg-slate-900/70 backdrop-blur-sm border border-slate-800 rounded-2xl p-7 shadow-2xl shadow-slate-950/60">
+      <h1 class="text-xl font-semibold mb-1 tracking-tight">Selamat datang kembali</h1>
       <p class="text-slate-400 text-sm mb-6">Masuk untuk mengelola toko kamu.</p>
       ${
         opts.error
           ? `<div class="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 text-red-300 text-sm px-4 py-3 flex items-center gap-2">${icon("alert", "w-4 h-4 shrink-0")}<span>${escapeHtml(opts.error)}</span></div>`
           : ""
       }
-      <label class="block text-xs uppercase tracking-wide text-slate-500 mb-1.5">Username</label>
+      <label class="block text-xs uppercase tracking-wider text-slate-500 mb-1.5 font-medium">Username</label>
       <input name="username" required autofocus autocomplete="username"
-        class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3.5 py-2.5 mb-4 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none transition" />
-      <label class="block text-xs uppercase tracking-wide text-slate-500 mb-1.5">Password</label>
+        class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3.5 py-2.5 mb-4 focus:border-cyan-500 focus:outline-none transition" />
+      <label class="block text-xs uppercase tracking-wider text-slate-500 mb-1.5 font-medium">Password</label>
       <input name="password" type="password" required autocomplete="current-password"
-        class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3.5 py-2.5 mb-6 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none transition" />
-      <button class="w-full bg-gradient-to-r from-cyan-500 to-violet-500 hover:opacity-90 active:scale-[0.99] transition rounded-lg px-4 py-2.5 font-medium shadow-lg shadow-cyan-500/20">Masuk</button>
+        class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3.5 py-2.5 mb-6 focus:border-cyan-500 focus:outline-none transition" />
+      <button class="w-full bg-gradient-to-r from-cyan-500 to-violet-500 hover:opacity-90 active:scale-[0.99] transition rounded-lg px-4 py-2.5 font-medium shadow-lg shadow-cyan-500/20">
+        Masuk
+      </button>
     </form>
 
     <p class="text-center text-xs text-slate-600 mt-6">

@@ -10,6 +10,7 @@ import {
   redeliverOrder,
   toggleProductActive,
 } from "../service.js";
+import { getAnalytics } from "../analytics.js";
 import { prisma } from "../../db.js";
 import {
   COOKIE_MAX_AGE_SEC,
@@ -22,6 +23,7 @@ import { renderHome } from "./pages/home.js";
 import { renderProducts } from "./pages/products.js";
 import { renderStock } from "./pages/stock.js";
 import { renderOrders } from "./pages/orders.js";
+import { renderAnalytics } from "./pages/analytics.js";
 
 type Flash = { kind: "success" | "error" | "info"; message: string };
 
@@ -36,7 +38,10 @@ function setFlash(reply: import("fastify").FastifyReply, flash: Flash) {
   });
 }
 
-function popFlash(req: import("fastify").FastifyRequest, reply: import("fastify").FastifyReply): Flash | null {
+function popFlash(
+  req: import("fastify").FastifyRequest,
+  reply: import("fastify").FastifyReply,
+): Flash | null {
   const raw = req.cookies?.[FLASH_COOKIE];
   if (!raw) return null;
   reply.clearCookie(FLASH_COOKIE, { path: "/admin" });
@@ -55,9 +60,17 @@ export function registerAdminDashboardRoutes(app: FastifyInstance): void {
 
   app.post<{ Body: { username?: string; password?: string } }>(
     "/admin/login",
+    {
+      // Rate limit per IP — 10 percobaan / 5 menit untuk mitigasi brute force.
+      // Pakai any-cast karena type-augmentation @fastify/rate-limit di v10 bermasalah dengan v5.
+      // Aman karena value sudah divalidasi oleh plugin.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      config: { rateLimit: { max: 10, timeWindow: "5 minutes" } } as any,
+    },
     async (req, reply) => {
       const { username = "", password = "" } = req.body ?? {};
       if (!checkCredentials(username, password)) {
+        logger.warn({ ip: req.ip, username }, "Failed admin login attempt");
         return reply
           .code(401)
           .type("text/html")
@@ -84,6 +97,13 @@ export function registerAdminDashboardRoutes(app: FastifyInstance): void {
     if (!(await requireAuth(req, reply))) return;
     const [stats, recent] = await Promise.all([getStats(), listRecentOrders({ take: 10 })]);
     return reply.type("text/html").send(renderHome({ stats, recent }));
+  });
+
+  // === Analytics ===
+  app.get("/admin/analytics", async (req, reply) => {
+    if (!(await requireAuth(req, reply))) return;
+    const data = await getAnalytics();
+    return reply.type("text/html").send(renderAnalytics(data));
   });
 
   // === Products list + create ===
@@ -174,7 +194,10 @@ export function registerAdminDashboardRoutes(app: FastifyInstance): void {
     if (!(await requireAuth(req, reply))) return;
     try {
       await redeliverOrder(req.params.id);
-      setFlash(reply, { kind: "success", message: `Order ${req.params.id} berhasil dikirim ulang` });
+      setFlash(reply, {
+        kind: "success",
+        message: `Order ${req.params.id} berhasil dikirim ulang`,
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error";
       logger.error({ err, orderId: req.params.id }, "Redeliver failed");
