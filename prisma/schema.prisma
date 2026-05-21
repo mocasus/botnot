@@ -1,0 +1,60 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Product {
+  id          String   @id
+  name        String
+  description String?
+  priceIDR    Int
+  type        String   @default("ACCOUNT") // ACCOUNT, LICENSE, FILE, ROLE, VOUCHER, etc
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  stocks Stock[]
+  orders Order[]
+}
+
+model Stock {
+  id        Int       @id @default(autoincrement())
+  productId String
+  payload   String    // teks akun/license/voucher yang dikirim ke pembeli
+  used      Boolean   @default(false)
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([productId, used])
+}
+
+model Order {
+  id          String    @id // = order_id (INV-...)
+  productId   String
+  qty         Int       @default(1)
+  amount      Int                                // sebelum unique amount
+  totalAmount Int?                               // total yg harus dibayar (dari KlikQRIS)
+  signature   String?                            // dari response create
+  qrisUrl     String?
+  status      String    @default("PENDING")     // PENDING | PAID | EXPIRED | FAILED
+  platform    String                             // TELEGRAM | DISCORD
+  chatId      String                             // Telegram chat id atau Discord user id
+  username    String?
+  expiredAt   DateTime?
+  paidAt      DateTime?
+  delivered   Boolean   @default(false)
+  deliveredAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([status])
+  @@index([platform, chatId])
+}
