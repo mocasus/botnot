@@ -121,21 +121,21 @@
 
 > Butuh **Node.js 20+** dan **npm** (atau pnpm/yarn).
 
-**Cara paling cepat (recommended):**
+**Cara paling cepat (recommended) — cuma 3 command:**
 
 ```bash
 git clone https://github.com/mocasus/botnot.git
 cd botnot
 npm install
-npm run db:push
-npm run setup       # buka browser otomatis ke form config
+npm run setup       # bikin .env, migrate DB, buka browser otomatis ke form config
 ```
 
-`npm run setup` akan:
+`npm run setup` ngerjain ini semua otomatis:
 1. Bikin `.env` dari `.env.example` (kalau belum ada)
-2. Start dev server
-3. **Auto-buka browser** ke `http://localhost:3000/setup` — form web untuk isi semua kredensial (KlikQRIS, bot tokens, owner ID, admin login)
-4. Setelah submit, restart server dengan Ctrl+C → `npm run dev`
+2. Migrate database (`prisma db push`)
+3. Start dev server
+4. **Auto-buka browser** ke `http://localhost:3000/setup` — form web untuk isi semua kredensial (KlikQRIS, bot tokens, owner ID, admin login)
+5. Setelah submit form, restart server dengan Ctrl+C → `npm run dev`
 
 **Cara manual (kalau mau edit `.env` langsung):**
 
@@ -287,12 +287,13 @@ npm run setup
 
 Yang terjadi:
 1. Auto-create `.env` dari `.env.example` kalau belum ada
-2. Start server
-3. Auto-buka browser ke `http://localhost:3000/setup` (cross-platform: macOS/Linux/Windows)
-4. Form punya section: Server, KlikQRIS, Telegram, Discord, Owner, Admin tambahan, Web Dashboard, Database
-5. Kalau lupa generate session secret, ada tombol **Generate** yang bikin string random
-6. Submit → `.env` lama di-backup (`.env.bak.<timestamp>`) → file baru ditulis dengan format rapi
-7. Pesan konfirmasi muncul, instruksi restart (Ctrl+C → `npm run dev`)
+2. Migrate database (`prisma db push`) — bikin tabel SQLite kalau belum ada
+3. Start server
+4. Auto-buka browser ke `http://localhost:3000/setup` (cross-platform: macOS/Linux/Windows)
+5. Form punya section: Server, KlikQRIS, Telegram, Discord, Owner, Admin tambahan, Web Dashboard, Database
+6. Kalau lupa generate session secret, ada tombol **Generate** yang bikin string random
+7. Submit → `.env` lama di-backup (`.env.bak.<timestamp>`) → file baru ditulis dengan format rapi
+8. Pesan konfirmasi muncul, instruksi restart (Ctrl+C → `npm run dev`)
 
 **Kapan setup wizard aktif:**
 
