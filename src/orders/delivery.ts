@@ -1,6 +1,7 @@
 import { prisma } from "../db.js";
 import { logger } from "../logger.js";
 import { registry } from "../bots/registry.js";
+import { notifyOwner } from "../admin/owner.js";
 
 /**
  * Allocate stok untuk order dan kirim ke pembeli via Telegram/Discord DM.
@@ -11,6 +12,7 @@ import { registry } from "../bots/registry.js";
  *   2. DM dikirim. Kalau gagal, lastDeliveryError diset; admin bisa retry via dashboard
  *      (atau webhook ulang) — kita ambil dari deliveryPayload yang sudah ada.
  *   3. Hanya setelah DM sukses, order.delivered diset true.
+ *   4. Owner di-notify untuk: order sukses (sales notif) ATAU delivery gagal (alert).
  */
 export async function deliverOrder(orderId: string): Promise<void> {
   const order = await prisma.order.findUnique({
@@ -46,9 +48,20 @@ export async function deliverOrder(orderId: string): Promise<void> {
       },
     });
     logger.info({ orderId, qty: order.qty, platform: order.platform }, "Order delivered");
+
+    // Sales notif untuk owner — best-effort, tidak block kalau gagal
+    void notifyOwner(
+      [
+        `*Penjualan baru!*`,
+        `Order: \`${order.id}\``,
+        `Produk: ${order.product.name} x${order.qty}`,
+        `Total: Rp${order.totalAmount?.toLocaleString("id-ID")}`,
+        `Pembeli: ${order.username ?? order.chatId} (${order.platform})`,
+      ].join("\n"),
+    );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    await prisma.order.update({
+    const updated = await prisma.order.update({
       where: { id: orderId },
       data: {
         deliveryAttempts: { increment: 1 },
@@ -56,6 +69,20 @@ export async function deliverOrder(orderId: string): Promise<void> {
       },
     });
     logger.error({ err, orderId }, "Gagal kirim DM ke user (stok sudah di-allocate, bisa retry)");
+
+    // Alert owner — pakai attempt baru
+    void notifyOwner(
+      [
+        `*Delivery GAGAL — order ${order.id}*`,
+        `Produk: ${order.product.name} x${order.qty}`,
+        `Pembeli: ${order.username ?? order.chatId} (${order.platform})`,
+        `Percobaan ke-${updated.deliveryAttempts}`,
+        `Error: \`${msg.slice(0, 200)}\``,
+        ``,
+        `Stok sudah ter-allocate. Cek dashboard /admin/orders untuk redeliver.`,
+      ].join("\n"),
+    );
+
     throw err;
   }
 }

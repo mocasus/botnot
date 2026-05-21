@@ -1,29 +1,36 @@
 import Fastify from "fastify";
 import cookie from "@fastify/cookie";
 import formbody from "@fastify/formbody";
-import { config, isDashboardConfigured, isKlikqrisConfigured } from "./config.js";
+import {
+  config,
+  isDashboardConfigured,
+  isFirstRun,
+  isKlikqrisConfigured,
+} from "./config.js";
 import { logger } from "./logger.js";
 import { registerWebhookRoutes } from "./payment/webhook.js";
 import { registerAdminDashboardRoutes } from "./admin/dashboard/routes.js";
+import { registerSetupRoutes } from "./setup/routes.js";
 import { startTelegramBot } from "./bots/telegram.js";
 import { startDiscordBot } from "./bots/discord.js";
 import { prisma } from "./db.js";
 
 async function main() {
-  printStartupWarnings();
-
   const app = Fastify({
     // Disable Fastify HTTP logging — kita pakai pino logger langsung di route handlers.
     logger: false,
   });
 
-  // Plugin: parse application/x-www-form-urlencoded (untuk admin dashboard forms)
+  // Plugin: parse application/x-www-form-urlencoded (untuk admin dashboard + setup forms)
   await app.register(formbody);
 
   // Plugin: signed cookies untuk session admin dashboard
   await app.register(cookie, {
     secret: config.ADMIN_SESSION_SECRET,
   });
+
+  // Setup wizard (auto-disabled di production yg sudah configured)
+  registerSetupRoutes(app);
 
   registerWebhookRoutes(app);
 
@@ -36,6 +43,8 @@ async function main() {
 
   await app.listen({ host: "0.0.0.0", port: config.PORT });
   logger.info({ port: config.PORT }, "HTTP server listening");
+
+  printStartupBanner();
 
   // Start kedua bot paralel; masing-masing kerja sendiri.
   await Promise.all([startTelegramBot(), startDiscordBot()]);
@@ -55,21 +64,48 @@ async function main() {
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
 }
 
-function printStartupWarnings() {
-  if (!isKlikqrisConfigured()) {
-    logger.warn(
-      "KlikQRIS belum dikonfigurasi (KLIKQRIS_API_KEY / KLIKQRIS_MERCHANT_ID kosong). " +
-        "Bot tetap jalan, tapi /buy akan gagal sampai diisi.",
+function printStartupBanner() {
+  const baseUrl = `http://localhost:${config.PORT}`;
+
+  if (isFirstRun()) {
+    // Banner besar untuk first-run user — direct ke setup wizard.
+    // eslint-disable-next-line no-console
+    console.log(
+      [
+        "",
+        "╔════════════════════════════════════════════════════════╗",
+        "║                                                        ║",
+        "║   First-run detected — buka setup wizard di browser:   ║",
+        "║                                                        ║",
+        `║   →  ${pad(`${baseUrl}/setup`, 50)}║`,
+        "║                                                        ║",
+        "║   Atau jalanin: npm run setup (auto-buka browser)      ║",
+        "║                                                        ║",
+        "╚════════════════════════════════════════════════════════╝",
+        "",
+      ].join("\n"),
     );
+  } else {
+    if (!isKlikqrisConfigured()) {
+      logger.warn(
+        "KlikQRIS belum dikonfigurasi (KLIKQRIS_API_KEY / KLIKQRIS_MERCHANT_ID kosong). " +
+          "Bot tetap jalan, tapi /buy akan gagal sampai diisi. Edit /setup untuk update.",
+      );
+    }
+    if (
+      config.ADMIN_SESSION_SECRET === "change-me-in-production-please" &&
+      config.NODE_ENV === "production"
+    ) {
+      logger.warn(
+        "ADMIN_SESSION_SECRET masih default. Generate yang random untuk production: openssl rand -hex 32",
+      );
+    }
+    logger.info({ url: `${baseUrl}/admin` }, "Admin dashboard ready");
   }
-  if (
-    config.ADMIN_SESSION_SECRET === "change-me-in-production-please" &&
-    config.NODE_ENV === "production"
-  ) {
-    logger.warn(
-      "ADMIN_SESSION_SECRET masih default. Generate yang random untuk production: openssl rand -hex 32",
-    );
-  }
+}
+
+function pad(s: string, width: number): string {
+  return s + " ".repeat(Math.max(0, width - s.length));
 }
 
 main().catch((err) => {

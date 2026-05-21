@@ -1,10 +1,12 @@
 import { Bot, InputFile } from "grammy";
-import { config } from "../config.js";
+import { config, isOwnerTelegram } from "../config.js";
 import { logger } from "../logger.js";
 import { listProducts } from "../products/catalog.js";
 import { createOrder } from "../orders/service.js";
 import { registry } from "./registry.js";
 import { registerTelegramAdminCommands } from "./telegram-admin.js";
+import { telegramRole } from "../admin/auth.js";
+import { notifyOwner } from "../admin/owner.js";
 
 export async function startTelegramBot(): Promise<void> {
   if (!config.TELEGRAM_BOT_TOKEN) {
@@ -14,19 +16,52 @@ export async function startTelegramBot(): Promise<void> {
 
   const bot = new Bot(config.TELEGRAM_BOT_TOKEN);
 
-  bot.command("start", (ctx) =>
-    ctx.reply(
+  bot.command("start", (ctx) => {
+    const role = telegramRole(ctx.from?.id);
+    const greeting =
+      role === "owner"
+        ? `Halo *Owner*! Selamat datang kembali. Bot kamu sudah online.`
+        : role === "admin"
+          ? `Halo Admin! Bot toko siap digunakan.`
+          : `Halo! Saya bot toko otomatis.`;
+
+    return ctx.reply(
       [
-        "Halo! Saya bot toko otomatis.",
+        greeting,
         "",
         "Perintah:",
         "/catalog - Lihat daftar produk",
         "/buy <product_id> [qty] - Beli produk",
+        "/whoami - Cek role kamu",
+        ...(role === "owner" || role === "admin" ? ["/admin - Daftar admin commands"] : []),
         "",
         "Setelah bayar QRIS, produk dikirim otomatis di chat ini.",
       ].join("\n"),
-    ),
-  );
+      { parse_mode: "Markdown" },
+    );
+  });
+
+  bot.command("whoami", (ctx) => {
+    const role = telegramRole(ctx.from?.id);
+    const labels: Record<typeof role, string> = {
+      owner: "Owner",
+      admin: "Admin",
+      customer: "Customer",
+    };
+    return ctx.reply(
+      [
+        `*Role:* ${labels[role]}`,
+        `*User ID:* \`${ctx.from?.id}\``,
+        `*Username:* @${ctx.from?.username ?? "(tidak ada)"}`,
+        ...(role === "owner"
+          ? ["", "Kamu primary admin. Otomatis dapat notifikasi event penting."]
+          : role === "admin"
+            ? ["", "Kamu admin. Pakai /admin untuk lihat command admin."]
+            : []),
+      ].join("\n"),
+      { parse_mode: "Markdown" },
+    );
+  });
 
   bot.command("catalog", async (ctx) => {
     const products = await listProducts();
@@ -96,16 +131,30 @@ export async function startTelegramBot(): Promise<void> {
     }
   });
 
-  // Admin commands (otomatis di-skip kalau ADMIN_TELEGRAM_IDS kosong)
+  // Admin commands (otomatis di-skip kalau ADMIN_TELEGRAM_IDS & OWNER_TELEGRAM_ID kosong)
   registerTelegramAdminCommands(bot);
 
   bot.catch((err) => logger.error({ err }, "Telegram bot error"));
 
   registry.telegram = bot;
 
-  // Long polling start (non-blocking)
+  // Long polling start (non-blocking) + greet owner saat bot online
   bot.start({
-    onStart: (info) => logger.info({ username: info.username }, "Telegram bot started"),
+    onStart: (info) => {
+      logger.info({ username: info.username }, "Telegram bot started");
+      // Best-effort owner greeting (skip silently kalau OWNER_TELEGRAM_ID tidak set)
+      if (config.OWNER_TELEGRAM_ID) {
+        void notifyOwner(
+          [
+            `*Bot Online*`,
+            ``,
+            `Telegram bot @${info.username} siap menerima order.`,
+            ``,
+            `Cek /admin untuk daftar admin commands, atau /whoami untuk cek status.`,
+          ].join("\n"),
+        );
+      }
+    },
   });
 }
 
@@ -118,3 +167,6 @@ function escapeMd(s: string): string {
   // basic Markdown V1 escape supaya nama produk yg punya _ atau * tidak rusak
   return s.replace(/([_*`\[\]])/g, "\\$1");
 }
+
+// Marker import biar isOwnerTelegram di-mark dipakai (untuk future use)
+void isOwnerTelegram;
