@@ -1,5 +1,5 @@
 import axios, { type AxiosInstance } from "axios";
-import { config } from "../config.js";
+import { config, isKlikqrisConfigured } from "../config.js";
 import { logger } from "../logger.js";
 
 /**
@@ -48,6 +48,11 @@ export interface StatusResponse {
 let client: AxiosInstance | null = null;
 
 function http(): AxiosInstance {
+  if (!isKlikqrisConfigured()) {
+    throw new Error(
+      "KlikQRIS belum dikonfigurasi. Set KLIKQRIS_API_KEY dan KLIKQRIS_MERCHANT_ID di .env terlebih dahulu.",
+    );
+  }
   if (client) return client;
   client = axios.create({
     baseURL: config.KLIKQRIS_API_BASE,

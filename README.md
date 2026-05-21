@@ -29,6 +29,8 @@
   - [KlikQRIS API Key](#3-klikqris-api-key)
 - [Konfigurasi `.env`](#konfigurasi-env)
 - [Webhook Public URL](#webhook-public-url)
+- [Admin Dashboard](#admin-dashboard)
+- [Admin Commands (Bot)](#admin-commands-bot)
 - [Struktur Project](#struktur-project)
 - [Perintah Bot](#perintah-bot)
 - [Deploy ke Production](#deploy-ke-production)
@@ -43,9 +45,13 @@
 - **Multi-platform**: Telegram + Discord dari satu codebase, satu database, satu webhook.
 - **QRIS dinamis**: tiap order dapet QR unik via API KlikQRIS, scan pakai e-wallet apa pun (GoPay, OVO, Dana, ShopeePay, m-banking, dll).
 - **Auto-deliver**: stok (akun, license key, voucher, file) otomatis dikirim ke DM pembeli setelah pembayaran terkonfirmasi.
+- **Admin web dashboard**: kelola produk, stok, dan order dari browser. Login dengan username/password, signed cookie session.
+- **Admin bot commands**: kelola toko langsung dari Telegram/Discord — tambah produk, restok, lihat orderan, kirim ulang produk yang gagal terkirim.
 - **Idempotent webhook**: pengecekan status di DB mencegah kirim produk dobel kalau callback masuk berulang.
 - **Signature validation**: webhook divalidasi dengan signature yang disimpan saat create transaction (anti fake-callback).
 - **Stock management**: alokasi stok pakai DB transaction, anti race condition kalau dua orang beli barengan.
+- **Retry-safe delivery**: kalau DM gagal terkirim, stok tetap teralokasi dan admin bisa kirim ulang dari dashboard tanpa double-claim stok.
+- **Graceful degradation**: bot tetap jalan walau kredensial KlikQRIS belum diisi (cuma `/buy` yang gagal sampai diisi).
 - **Configurable**: SQLite untuk dev, tinggal ganti `DATABASE_URL` ke Postgres untuk production.
 
 ## Cara Kerja
@@ -211,21 +217,30 @@ Buka chat Telegram dengan bot kamu, ketik `/start` &mdash; siap testing!
 NODE_ENV=development
 PORT=3000
 
-# KlikQRIS
+# KlikQRIS — boleh dikosongkan untuk dev, /buy gagal sampai diisi
 KLIKQRIS_API_BASE=https://klikqris.com/api
 KLIKQRIS_API_KEY=          # x-api-key dari dashboard
 KLIKQRIS_MERCHANT_ID=      # id_merchant
 
-# Telegram
+# Telegram — kosongkan untuk disable
 TELEGRAM_BOT_TOKEN=        # dari @BotFather
 
-# Discord
+# Discord — kosongkan untuk disable
 DISCORD_BOT_TOKEN=         # dari Developer Portal > Bot
 DISCORD_CLIENT_ID=         # = Application ID
 DISCORD_GUILD_ID=          # opsional, isi untuk dev (slash command instan)
 
+# Admin bot commands (CSV user IDs)
+ADMIN_TELEGRAM_IDS=        # contoh: 12345,67890 (lihat @userinfobot)
+ADMIN_DISCORD_IDS=         # contoh: 1112,3334 (Developer Mode > Copy User ID)
+
+# Admin web dashboard — kosongkan ADMIN_USERNAME untuk disable
+ADMIN_USERNAME=
+ADMIN_PASSWORD=
+ADMIN_SESSION_SECRET=      # generate: openssl rand -hex 32
+
 # Database
-DATABASE_URL="file:./prisma/dev.db"
+DATABASE_URL="file:./dev.db"
 
 # Webhook
 PUBLIC_BASE_URL=           # contoh: https://abc123.ngrok.io
@@ -256,6 +271,103 @@ Untuk production: deploy ke VPS / Railway / Fly.io / Render dan pakai domain HTT
 
 ---
 
+## Admin Dashboard
+
+Web UI untuk kelola toko dari browser. Auto-aktif saat `ADMIN_USERNAME` & `ADMIN_PASSWORD` diisi.
+
+**Setup:**
+
+```bash
+# Edit .env
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=password-yang-kuat
+ADMIN_SESSION_SECRET=$(openssl rand -hex 32)
+```
+
+**Akses:** `http://localhost:3000/admin` &rarr; login &rarr; dashboard.
+
+**Halaman yang tersedia:**
+
+| Path                              | Fungsi                                                       |
+| --------------------------------- | ------------------------------------------------------------ |
+| `/admin/login`                    | Form login                                                   |
+| `/admin`                          | Stat cards (revenue today/7d/all-time, stok, count by status) + 10 order terakhir |
+| `/admin/products`                 | List produk + form tambah produk + toggle aktif/nonaktif    |
+| `/admin/products/:id/stock`       | Detail stok per produk + bulk add (paste banyak baris sekaligus) |
+| `/admin/orders`                   | List order, filter status (Pending/Paid/Expired), tombol redeliver |
+
+**Fitur kunci:**
+
+- **Bulk add stok**: paste daftar akun/license/voucher di textarea, satu item per baris.
+- **Redeliver**: kalau pembeli komplain produk gak nyampe (DM Discord blocked, dll), klik tombol Redeliver di halaman Orders. Sistem reuse stok yang sudah dialokasikan, jadi tidak double-claim.
+- **Indikator delivery error**: order yang sudah PAID tapi DM gagal akan menampilkan jumlah percobaan + error message terakhir.
+- **Session**: cookie HttpOnly + signed dengan `ADMIN_SESSION_SECRET`, expired 7 hari.
+
+> **Tip keamanan:** dashboard ini tidak di-rate-limit. Untuk production, taruh di belakang reverse proxy (Caddy/Nginx) yang bisa rate-limit `/admin/login`, atau ekspos hanya via VPN/Tailscale.
+
+---
+
+## Admin Commands (Bot)
+
+Selain dashboard, admin juga bisa kelola toko langsung dari chat Telegram atau Discord.
+
+**Setup:**
+
+1. Dapatkan numeric user ID kamu:
+   - **Telegram**: chat `@userinfobot`, dia akan kirim ID-mu.
+   - **Discord**: Settings &rarr; Advanced &rarr; Developer Mode ON &rarr; klik kanan profil sendiri &rarr; Copy User ID.
+2. Isi di `.env`:
+   ```bash
+   ADMIN_TELEGRAM_IDS=123456789,987654321
+   ADMIN_DISCORD_IDS=111122223333,444455556666
+   ```
+
+### Telegram Admin Commands
+
+| Command                                          | Deskripsi                                                |
+| ------------------------------------------------ | -------------------------------------------------------- |
+| `/admin`                                         | Lihat daftar admin commands                              |
+| `/stats`                                         | Statistik penjualan (revenue, count by status)           |
+| `/orders [pending\|paid\|expired]`               | 10 order terakhir, filter optional                       |
+| `/products`                                      | Daftar semua produk + stok                               |
+| `/addproduct <id>\|<nama>\|<harga>\|<deskripsi>` | Tambah produk (pisahkan dengan `\|`)                     |
+| `/addstock <product_id>` *(multi-line)*          | Tambah stok bulk (payload di baris-baris berikutnya)     |
+| `/toggle <product_id>`                           | Aktifkan/nonaktifkan produk                              |
+| `/redeliver <order_id>`                          | Kirim ulang produk untuk order tertentu                  |
+
+**Contoh `/addstock` multi-line:**
+
+```
+/addstock NETFLIX-1B
+email1@test.com|password1
+email2@test.com|password2
+email3@test.com|password3
+```
+
+### Discord Admin Slash Commands
+
+Semua command admin pakai prefix `/admin-`. Hanya bisa diakses oleh user yang ada di `ADMIN_DISCORD_IDS`.
+
+| Slash Command                                                    | Deskripsi                                |
+| ---------------------------------------------------------------- | ---------------------------------------- |
+| `/admin-stats`                                                   | Statistik penjualan                      |
+| `/admin-orders [status]`                                         | 10 order terakhir                        |
+| `/admin-products`                                                | Daftar produk                            |
+| `/admin-add-product id name price [description] [type]`          | Tambah produk                            |
+| `/admin-add-stock product_id payloads`                           | Tambah stok (`payloads` pisahkan `\|\|`) |
+| `/admin-toggle product_id`                                       | Aktif/nonaktif produk                    |
+| `/admin-redeliver order_id`                                      | Kirim ulang produk                       |
+
+**Contoh `/admin-add-stock`:**
+
+```
+/admin-add-stock product_id:NETFLIX-1B payloads:akun1@test.com|pw1||akun2@test.com|pw2||akun3@test.com|pw3
+```
+
+(payload-nya pakai `|` internal, dan `||` sebagai separator antar item)
+
+---
+
 ## Struktur Project
 
 ```
@@ -266,13 +378,23 @@ botnot/
 │   ├── schema.prisma         # Product, Stock, Order
 │   └── seed.ts               # contoh data
 ├── src/
+│   ├── admin/
+│   │   ├── auth.ts           # admin ID checks
+│   │   ├── service.ts        # stats, CRUD produk/stok, redeliver
+│   │   └── dashboard/
+│   │       ├── routes.ts     # Fastify routes /admin/*
+│   │       ├── middleware.ts # session cookie auth
+│   │       ├── layout.ts     # shared HTML layout
+│   │       └── pages/        # home, products, stock, orders
 │   ├── bots/
 │   │   ├── telegram.ts       # /start /catalog /buy
-│   │   ├── discord.ts        # slash commands
+│   │   ├── telegram-admin.ts # /admin /stats /orders /addstock dll
+│   │   ├── discord.ts        # slash commands user
+│   │   ├── discord-admin.ts  # /admin-* slash commands
 │   │   └── registry.ts       # shared bot instances
 │   ├── orders/
 │   │   ├── service.ts        # createOrder, markOrderPaid
-│   │   └── delivery.ts       # auto-deliver stok ke pembeli
+│   │   └── delivery.ts       # auto-deliver stok ke pembeli (retry-safe)
 │   ├── payment/
 │   │   ├── klikqris.ts       # client API
 │   │   └── webhook.ts        # POST /webhook/klikqris
@@ -280,7 +402,7 @@ botnot/
 │   ├── config.ts             # zod-validated env
 │   ├── db.ts                 # prisma client
 │   ├── logger.ts             # pino
-│   └── index.ts              # entrypoint
+│   └── index.ts              # entrypoint (HTTP + bots)
 ├── .env.example
 ├── package.json
 └── tsconfig.json
@@ -309,7 +431,11 @@ botnot/
 
 ### Tambah produk
 
-Pakai Prisma Studio:
+Cara termudah: pakai **[Admin Dashboard](#admin-dashboard)** di `/admin/products`.
+
+Atau dari bot pakai **[Admin Commands](#admin-commands-bot)** seperti `/addproduct` (Telegram) atau `/admin-add-product` (Discord).
+
+Atau via Prisma Studio:
 
 ```bash
 npm run db:studio
@@ -344,12 +470,15 @@ Atau edit `prisma/seed.ts` lalu jalanin `npm run db:seed`.
 
 ## Roadmap
 
+- [x] Admin web dashboard (login, products, stock, orders, redeliver)
+- [x] Admin bot commands (Telegram + Discord)
+- [x] Retry-safe delivery dengan tombol redeliver di dashboard
 - [ ] Cron auto-expire order yang stuck `PENDING`
 - [ ] Retry queue (BullMQ + Redis) untuk delivery yang gagal
-- [ ] Admin commands: tambah produk, restok, lihat orderan, refund
 - [ ] Notifikasi WhatsApp via flag `notifwa` KlikQRIS
-- [ ] Dashboard web (Next.js) untuk monitoring penjualan
+- [ ] Dashboard analytics (chart penjualan, top produk)
 - [ ] Integrasi role Discord otomatis (untuk produk tipe `ROLE`)
+- [ ] Rate limiting di `/admin/login`
 - [ ] Unit & integration tests
 
 ---
