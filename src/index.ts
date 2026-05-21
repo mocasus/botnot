@@ -1,6 +1,7 @@
 import Fastify from "fastify";
 import cookie from "@fastify/cookie";
 import formbody from "@fastify/formbody";
+import rateLimit from "@fastify/rate-limit";
 import {
   config,
   isDashboardConfigured,
@@ -13,12 +14,14 @@ import { registerAdminDashboardRoutes } from "./admin/dashboard/routes.js";
 import { registerSetupRoutes } from "./setup/routes.js";
 import { startTelegramBot } from "./bots/telegram.js";
 import { startDiscordBot } from "./bots/discord.js";
+import { startExpireOrdersCron, stopExpireOrdersCron } from "./cron/expire-orders.js";
 import { prisma } from "./db.js";
 
 async function main() {
   const app = Fastify({
     // Disable Fastify HTTP logging — kita pakai pino logger langsung di route handlers.
     logger: false,
+    trustProxy: true, // supaya rate-limit pakai IP asli di belakang reverse proxy
   });
 
   // Plugin: parse application/x-www-form-urlencoded (untuk admin dashboard + setup forms)
@@ -27,6 +30,12 @@ async function main() {
   // Plugin: signed cookies untuk session admin dashboard
   await app.register(cookie, {
     secret: config.ADMIN_SESSION_SECRET,
+  });
+
+  // Plugin: rate limiter — global default loose, route-specific tight di /admin/login
+  await app.register(rateLimit, {
+    global: false, // hanya route yang explicit-in via { config: { rateLimit: ... } }
+    keyGenerator: (req) => req.ip,
   });
 
   // Setup wizard (auto-disabled di production yg sudah configured)
@@ -46,12 +55,16 @@ async function main() {
 
   printStartupBanner();
 
+  // Start background cron untuk auto-expire order PENDING yang sudah lewat waktu
+  startExpireOrdersCron();
+
   // Start kedua bot paralel; masing-masing kerja sendiri.
   await Promise.all([startTelegramBot(), startDiscordBot()]);
 
   const shutdown = async (signal: string) => {
     logger.info({ signal }, "Shutting down...");
     try {
+      stopExpireOrdersCron();
       await app.close();
       await prisma.$disconnect();
     } catch (err) {

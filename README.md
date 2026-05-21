@@ -32,6 +32,7 @@
 - [Webhook Public URL](#webhook-public-url)
 - [Owner System](#owner-system)
 - [Admin Dashboard](#admin-dashboard)
+- [Analytics](#analytics)
 - [Admin Commands (Bot)](#admin-commands-bot)
 - [Struktur Project](#struktur-project)
 - [Perintah Bot](#perintah-bot)
@@ -47,14 +48,17 @@
 - **Multi-platform**: Telegram + Discord dari satu codebase, satu database, satu webhook.
 - **QRIS dinamis**: tiap order dapet QR unik via API KlikQRIS, scan pakai e-wallet apa pun (GoPay, OVO, Dana, ShopeePay, m-banking, dll).
 - **Auto-deliver**: stok (akun, license key, voucher, file) otomatis dikirim ke DM pembeli setelah pembayaran terkonfirmasi.
+- **Inline button UX**: bot pakai tombol interaktif (gak perlu hafalin command) — Telegram InlineKeyboard, Discord ButtonBuilder + SelectMenu.
 - **Setup wizard**: `npm run setup` buka browser otomatis ke form web yang ngisi `.env` untuk kamu — gak perlu edit file manual.
 - **Owner-aware bots**: bot kenal siapa owner-nya. Owner otomatis admin + dapet notifikasi (bot online, order baru, delivery gagal). Slash command `/whoami` untuk cek role.
-- **Admin web dashboard**: kelola produk, stok, dan order dari browser. Login dengan username/password, signed cookie session.
+- **Admin web dashboard**: kelola produk, stok, order, plus halaman **analytics** (chart revenue 30 hari, top produk, breakdown per platform).
 - **Admin bot commands**: kelola toko langsung dari Telegram/Discord — tambah produk, restok, lihat orderan, kirim ulang produk yang gagal terkirim.
 - **Idempotent webhook**: pengecekan status di DB mencegah kirim produk dobel kalau callback masuk berulang.
 - **Signature validation**: webhook divalidasi dengan signature yang disimpan saat create transaction (anti fake-callback).
 - **Stock management**: alokasi stok pakai DB transaction, anti race condition kalau dua orang beli barengan.
 - **Retry-safe delivery**: kalau DM gagal terkirim, stok tetap teralokasi dan admin bisa kirim ulang dari dashboard tanpa double-claim stok.
+- **Auto-expire**: order PENDING yang lewat waktu otomatis di-mark EXPIRED via cron job (jalan tiap 1 menit).
+- **Rate limiting**: `/admin/login` di-protect dari brute force (max 10 attempt per 5 menit per IP).
 - **Graceful degradation**: bot tetap jalan walau kredensial KlikQRIS belum diisi (cuma `/buy` yang gagal sampai diisi).
 - **Configurable**: SQLite untuk dev, tinggal ganti `DATABASE_URL` ke Postgres untuk production.
 
@@ -404,7 +408,25 @@ ADMIN_SESSION_SECRET=$(openssl rand -hex 32)
 - **Indikator delivery error**: order yang sudah PAID tapi DM gagal akan menampilkan jumlah percobaan + error message terakhir.
 - **Session**: cookie HttpOnly + signed dengan `ADMIN_SESSION_SECRET`, expired 7 hari.
 
-> **Tip keamanan:** dashboard ini tidak di-rate-limit. Untuk production, taruh di belakang reverse proxy (Caddy/Nginx) yang bisa rate-limit `/admin/login`, atau ekspos hanya via VPN/Tailscale.
+> **Tip keamanan:** dashboard ini sekarang sudah di-rate-limit di `/admin/login` (max 10 attempt per 5 menit per IP). Untuk production, taruh tambahan reverse proxy (Caddy/Nginx) atau ekspos hanya via VPN/Tailscale.
+
+---
+
+## Analytics
+
+Halaman `/admin/analytics` kasih insight 30 hari terakhir:
+
+| Metrik | Visualisasi |
+| --- | --- |
+| Revenue 30 hari | Big number + line chart per hari |
+| Order 30 hari | Big number |
+| Average Order Value (AOV) | Big number |
+| Delivery Failure Rate | Big number (warna merah kalau >5%) |
+| Top 10 produk by revenue | Ranked list dengan progress bar |
+| Distribusi status order | Bar breakdown (PENDING/PAID/EXPIRED) |
+| Penjualan per platform | Telegram vs Discord |
+
+Chart-nya pure SVG (gak butuh library) — render server-side. Hover dot di line chart untuk lihat angka per hari.
 
 ---
 
@@ -520,24 +542,35 @@ botnot/
 
 ## Perintah Bot
 
-### Telegram
+Bot kami pakai **inline buttons** sebagai UX utama — pelanggan tinggal klik tombol, gak perlu hafalin command. Tapi text command tetap jalan untuk power users.
+
+### Telegram (button-driven)
+
+Pelanggan ketik `/start` → muncul menu dengan tombol:
+
+```
+   📦 Lihat Katalog
+   ℹ️ Bantuan        👤 Profile
+```
+
+Klik **Lihat Katalog** → list produk muncul sebagai tombol (1 produk per baris dengan info harga + stok). Klik produk → detail + tombol qty (`Beli 1`, `Beli 3`, `Beli 5`). Klik beli → QR muncul + tombol `🔄 Cek Status` untuk monitor pembayaran.
 
 | Command                 | Deskripsi                          |
 | ----------------------- | ---------------------------------- |
-| `/start`                | Welcome message (greeting beda untuk owner/admin/customer) |
-| `/catalog`              | Lihat semua produk + harga + stok  |
-| `/buy <product_id>`     | Beli 1 unit                        |
-| `/buy <product_id> <n>` | Beli `n` unit                      |
-| `/whoami`               | Cek role kamu (owner/admin/customer) + user ID |
+| `/start`                | Menu utama (button-driven)         |
+| `/catalog`              | Buka katalog dengan tombol-tombol  |
+| `/buy <product_id> [qty]` | Beli langsung (power user, text)  |
+| `/whoami`               | Cek role kamu + user ID            |
 
-### Discord
+### Discord (slash command + components)
 
-| Slash Command                            | Deskripsi               |
-| ---------------------------------------- | ----------------------- |
-| `/catalog`                               | Lihat semua produk      |
-| `/buy product_id:<id>`                   | Beli 1 unit             |
-| `/buy product_id:<id> qty:<n>`           | Beli `n` unit           |
-| `/whoami`                                | Cek role kamu + user ID |
+`/catalog` → embed dengan **dropdown SelectMenu** berisi semua produk. Pelanggan pilih produk → reply ephemeral dengan detail + buttons (`Beli 1`, `Beli 3`, `Beli 5`). Klik beli → QR dikirim + tombol `Cek Status`.
+
+| Slash Command                            | Deskripsi                          |
+| ---------------------------------------- | ---------------------------------- |
+| `/catalog`                               | Katalog dengan dropdown + buttons  |
+| `/buy product_id:<id> [qty:<n>]`         | Beli langsung (power user)         |
+| `/whoami`                                | Cek role kamu + user ID            |
 
 ### Tambah produk
 
@@ -580,17 +613,20 @@ Atau edit `prisma/seed.ts` lalu jalanin `npm run db:seed`.
 
 ## Roadmap
 
-- [x] Admin web dashboard (login, products, stock, orders, redeliver)
+- [x] Admin web dashboard (login, products, stock, orders, redeliver, analytics)
 - [x] Admin bot commands (Telegram + Discord)
 - [x] Setup wizard (`npm run setup` + `/setup` web form)
 - [x] Owner-aware bots (auto-admin, notifications, `/whoami` command)
 - [x] Retry-safe delivery dengan tombol redeliver di dashboard
-- [ ] Cron auto-expire order yang stuck `PENDING`
+- [x] **Inline buttons di bot** (Telegram InlineKeyboard + Discord ButtonBuilder/SelectMenu)
+- [x] **Cron auto-expire** order PENDING yang lewat waktu (jalan tiap 1 menit)
+- [x] **Rate limiting** `/admin/login` (max 10 attempt/5 menit per IP)
+- [x] **Dashboard analytics** — chart revenue 30 hari, top produk, breakdown per status & platform
 - [ ] Retry queue (BullMQ + Redis) untuk delivery yang gagal
 - [ ] Notifikasi WhatsApp via flag `notifwa` KlikQRIS
-- [ ] Dashboard analytics (chart penjualan, top produk)
 - [ ] Integrasi role Discord otomatis (untuk produk tipe `ROLE`)
-- [ ] Rate limiting di `/admin/login`
+- [ ] Export data CSV (orders, sales report)
+- [ ] Multi-currency support
 - [ ] Unit & integration tests
 
 ---
