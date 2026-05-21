@@ -14,6 +14,11 @@ import { logger } from "../logger.js";
 import { listProducts } from "../products/catalog.js";
 import { createOrder } from "../orders/service.js";
 import { registry } from "./registry.js";
+import {
+  adminCommandDefinitions,
+  handleAdminCommand,
+  isAdminCommand,
+} from "./discord-admin.js";
 
 export async function startDiscordBot(): Promise<void> {
   if (!config.DISCORD_BOT_TOKEN || !config.DISCORD_CLIENT_ID) {
@@ -25,8 +30,8 @@ export async function startDiscordBot(): Promise<void> {
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.DirectMessages],
   });
 
-  // Definisi slash commands
-  const commands = [
+  // User commands
+  const userCommands = [
     new SlashCommandBuilder()
       .setName("catalog")
       .setDescription("Lihat daftar produk")
@@ -43,6 +48,8 @@ export async function startDiscordBot(): Promise<void> {
       .toJSON(),
   ];
 
+  const commands = [...userCommands, ...adminCommandDefinitions];
+
   // Register commands (guild = instan, global = bisa sampai 1 jam propagasi)
   const rest = new REST({ version: "10" }).setToken(config.DISCORD_BOT_TOKEN);
   const route = config.DISCORD_GUILD_ID
@@ -50,13 +57,17 @@ export async function startDiscordBot(): Promise<void> {
     : Routes.applicationCommands(config.DISCORD_CLIENT_ID);
   await rest.put(route, { body: commands });
   logger.info(
-    { scope: config.DISCORD_GUILD_ID ? "guild" : "global" },
+    { scope: config.DISCORD_GUILD_ID ? "guild" : "global", count: commands.length },
     "Discord slash commands registered",
   );
 
   client.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
     try {
+      if (isAdminCommand(interaction.commandName)) {
+        await handleAdminCommand(interaction);
+        return;
+      }
       if (interaction.commandName === "catalog") {
         await handleCatalog(interaction);
       } else if (interaction.commandName === "buy") {

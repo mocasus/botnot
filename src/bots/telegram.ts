@@ -4,6 +4,7 @@ import { logger } from "../logger.js";
 import { listProducts } from "../products/catalog.js";
 import { createOrder } from "../orders/service.js";
 import { registry } from "./registry.js";
+import { registerTelegramAdminCommands } from "./telegram-admin.js";
 
 export async function startTelegramBot(): Promise<void> {
   if (!config.TELEGRAM_BOT_TOKEN) {
@@ -94,6 +95,9 @@ export async function startTelegramBot(): Promise<void> {
       await ctx.reply(`Gagal membuat order: ${message}`);
     }
   });
+
+  // Admin commands (otomatis di-skip kalau ADMIN_TELEGRAM_IDS kosong)
+  registerTelegramAdminCommands(bot);
 
   bot.catch((err) => logger.error({ err }, "Telegram bot error"));
 

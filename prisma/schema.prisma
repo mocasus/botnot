@@ -27,6 +27,7 @@ model Stock {
   payload   String    // teks akun/license/voucher yang dikirim ke pembeli
   used      Boolean   @default(false)
   usedAt    DateTime?
+  orderId   String?   // tracking: order mana yang men-claim stock ini
   createdAt DateTime  @default(now())
 
   product Product @relation(fields: [productId], references: [id])
@@ -35,26 +36,32 @@ model Stock {
 }
 
 model Order {
-  id          String    @id // = order_id (INV-...)
-  productId   String
-  qty         Int       @default(1)
-  amount      Int                                // sebelum unique amount
-  totalAmount Int?                               // total yg harus dibayar (dari KlikQRIS)
-  signature   String?                            // dari response create
-  qrisUrl     String?
-  status      String    @default("PENDING")     // PENDING | PAID | EXPIRED | FAILED
-  platform    String                             // TELEGRAM | DISCORD
-  chatId      String                             // Telegram chat id atau Discord user id
-  username    String?
-  expiredAt   DateTime?
-  paidAt      DateTime?
-  delivered   Boolean   @default(false)
-  deliveredAt DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id                String    @id // = order_id (INV-...)
+  productId         String
+  qty               Int       @default(1)
+  amount            Int                                // sebelum unique amount
+  totalAmount       Int?                               // total yg harus dibayar (dari KlikQRIS)
+  signature         String?                            // dari response create
+  qrisUrl           String?
+  status            String    @default("PENDING")     // PENDING | PAID | EXPIRED | FAILED
+  platform          String                             // TELEGRAM | DISCORD
+  chatId            String                             // Telegram chat id atau Discord user id
+  username          String?
+  expiredAt         DateTime?
+  paidAt            DateTime?
+  delivered         Boolean   @default(false)
+  deliveredAt       DateTime?
+  // Retry-safe delivery: simpan payloads stok setelah dialokasikan,
+  // jadi DM yang gagal bisa di-retry tanpa double-claim stok.
+  deliveryPayload   String?                            // JSON array of payloads
+  deliveryAttempts  Int       @default(0)
+  lastDeliveryError String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   product Product @relation(fields: [productId], references: [id])
 
   @@index([status])
   @@index([platform, chatId])
+  @@index([createdAt])
 }

@@ -4,7 +4,13 @@ import { registry } from "../bots/registry.js";
 
 /**
  * Allocate stok untuk order dan kirim ke pembeli via Telegram/Discord DM.
- * Idempoten: kalau order.delivered=true, langsung skip.
+ *
+ * Retry-safe flow:
+ *   1. Stok dialokasikan dalam DB transaction → payloads disimpan di order.deliveryPayload
+ *      sehingga retry tidak men-double-claim stok.
+ *   2. DM dikirim. Kalau gagal, lastDeliveryError diset; admin bisa retry via dashboard
+ *      (atau webhook ulang) — kita ambil dari deliveryPayload yang sudah ada.
+ *   3. Hanya setelah DM sukses, order.delivered diset true.
  */
 export async function deliverOrder(orderId: string): Promise<void> {
   const order = await prisma.order.findUnique({
@@ -17,46 +23,80 @@ export async function deliverOrder(orderId: string): Promise<void> {
     return;
   }
 
-  // Allocate stok dalam transaction supaya tidak race condition
-  const payloads: string[] = [];
-  await prisma.$transaction(async (db) => {
-    for (let i = 0; i < order.qty; i++) {
+  // Step 1: pastikan stok sudah ter-allocate untuk order ini
+  let payloads: string[];
+  if (order.deliveryPayload) {
+    payloads = JSON.parse(order.deliveryPayload) as string[];
+    logger.info({ orderId, attempts: order.deliveryAttempts }, "Retrying delivery with existing payloads");
+  } else {
+    payloads = await allocateStock(orderId, order.productId, order.qty);
+  }
+
+  // Step 2: kirim DM
+  const message = formatDeliveryMessage(order.product.name, payloads);
+  try {
+    await sendToUser(order.platform, order.chatId, message);
+    await prisma.order.update({
+      where: { id: orderId },
+      data: {
+        delivered: true,
+        deliveredAt: new Date(),
+        lastDeliveryError: null,
+        deliveryAttempts: { increment: 1 },
+      },
+    });
+    logger.info({ orderId, qty: order.qty, platform: order.platform }, "Order delivered");
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    await prisma.order.update({
+      where: { id: orderId },
+      data: {
+        deliveryAttempts: { increment: 1 },
+        lastDeliveryError: msg.slice(0, 500),
+      },
+    });
+    logger.error({ err, orderId }, "Gagal kirim DM ke user (stok sudah di-allocate, bisa retry)");
+    throw err;
+  }
+}
+
+async function allocateStock(orderId: string, productId: string, qty: number): Promise<string[]> {
+  return prisma.$transaction(async (db) => {
+    const payloads: string[] = [];
+    for (let i = 0; i < qty; i++) {
       const stock = await db.stock.findFirst({
-        where: { productId: order.productId, used: false },
+        where: { productId, used: false },
         orderBy: { id: "asc" },
       });
       if (!stock) {
-        throw new Error(`Stok ${order.productId} habis saat delivery (order ${orderId})`);
+        throw new Error(`Stok ${productId} habis saat delivery (order ${orderId})`);
       }
       await db.stock.update({
         where: { id: stock.id },
-        data: { used: true, usedAt: new Date() },
+        data: { used: true, usedAt: new Date(), orderId },
       });
       payloads.push(stock.payload);
     }
     await db.order.update({
       where: { id: orderId },
-      data: { delivered: true, deliveredAt: new Date() },
+      data: { deliveryPayload: JSON.stringify(payloads) },
     });
+    return payloads;
   });
+}
 
-  const message = formatDeliveryMessage(order.product.name, payloads);
-
-  try {
-    if (order.platform === "TELEGRAM") {
-      const bot = registry.telegram;
-      if (!bot) throw new Error("Telegram bot not running");
-      await bot.api.sendMessage(order.chatId, message, { parse_mode: "Markdown" });
-    } else if (order.platform === "DISCORD") {
-      const client = registry.discord;
-      if (!client) throw new Error("Discord bot not running");
-      const user = await client.users.fetch(order.chatId);
-      await user.send(message);
-    }
-    logger.info({ orderId, qty: order.qty, platform: order.platform }, "Order delivered");
-  } catch (err) {
-    logger.error({ err, orderId }, "Gagal kirim DM ke user (produk sudah di-allocate)");
-    throw err;
+async function sendToUser(platform: string, chatId: string, message: string): Promise<void> {
+  if (platform === "TELEGRAM") {
+    const bot = registry.telegram;
+    if (!bot) throw new Error("Telegram bot tidak running");
+    await bot.api.sendMessage(chatId, message, { parse_mode: "Markdown" });
+  } else if (platform === "DISCORD") {
+    const client = registry.discord;
+    if (!client) throw new Error("Discord bot tidak running");
+    const user = await client.users.fetch(chatId);
+    await user.send(message);
+  } else {
+    throw new Error(`Platform ${platform} tidak didukung`);
   }
 }
 
