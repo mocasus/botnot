@@ -6,6 +6,7 @@
   "description": "Auto-order Telegram & Discord bot dengan integrasi KlikQRIS",
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "setup": "node scripts/setup.mjs",
     "build": "tsc",
     "start": "node dist/index.js",
     "db:generate": "prisma generate",

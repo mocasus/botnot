@@ -28,7 +28,9 @@
   - [Discord Bot Token](#2-discord-bot-token)
   - [KlikQRIS API Key](#3-klikqris-api-key)
 - [Konfigurasi `.env`](#konfigurasi-env)
+- [Setup Wizard (`npm run setup`)](#setup-wizard-npm-run-setup)
 - [Webhook Public URL](#webhook-public-url)
+- [Owner System](#owner-system)
 - [Admin Dashboard](#admin-dashboard)
 - [Admin Commands (Bot)](#admin-commands-bot)
 - [Struktur Project](#struktur-project)
@@ -45,6 +47,8 @@
 - **Multi-platform**: Telegram + Discord dari satu codebase, satu database, satu webhook.
 - **QRIS dinamis**: tiap order dapet QR unik via API KlikQRIS, scan pakai e-wallet apa pun (GoPay, OVO, Dana, ShopeePay, m-banking, dll).
 - **Auto-deliver**: stok (akun, license key, voucher, file) otomatis dikirim ke DM pembeli setelah pembayaran terkonfirmasi.
+- **Setup wizard**: `npm run setup` buka browser otomatis ke form web yang ngisi `.env` untuk kamu — gak perlu edit file manual.
+- **Owner-aware bots**: bot kenal siapa owner-nya. Owner otomatis admin + dapet notifikasi (bot online, order baru, delivery gagal). Slash command `/whoami` untuk cek role.
 - **Admin web dashboard**: kelola produk, stok, dan order dari browser. Login dengan username/password, signed cookie session.
 - **Admin bot commands**: kelola toko langsung dari Telegram/Discord — tambah produk, restok, lihat orderan, kirim ulang produk yang gagal terkirim.
 - **Idempotent webhook**: pengecekan status di DB mencegah kirim produk dobel kalau callback masuk berulang.
@@ -117,33 +121,49 @@
 
 > Butuh **Node.js 20+** dan **npm** (atau pnpm/yarn).
 
+**Cara paling cepat (recommended):**
+
 ```bash
-# 1. Clone repo
 git clone https://github.com/mocasus/botnot.git
 cd botnot
-
-# 2. Install dependencies
 npm install
+npm run db:push
+npm run setup       # buka browser otomatis ke form config
+```
 
-# 3. Setup environment variables
+`npm run setup` akan:
+1. Bikin `.env` dari `.env.example` (kalau belum ada)
+2. Start dev server
+3. **Auto-buka browser** ke `http://localhost:3000/setup` — form web untuk isi semua kredensial (KlikQRIS, bot tokens, owner ID, admin login)
+4. Setelah submit, restart server dengan Ctrl+C → `npm run dev`
+
+**Cara manual (kalau mau edit `.env` langsung):**
+
+```bash
 cp .env.example .env
-# Edit .env, isi KLIKQRIS_*, TELEGRAM_BOT_TOKEN, DISCORD_BOT_TOKEN, DISCORD_CLIENT_ID
-# (panduan ada di section "Cara Dapat Kredensial" di bawah)
-
-# 4. Setup database (SQLite, default ada di prisma/dev.db)
+# edit .env pakai editor favorit kamu (panduan lengkap di "Cara Dapat Kredensial")
 npm run db:push
 npm run db:seed     # opsional: isi contoh produk
-
-# 5. Jalanin (webhook + Telegram bot + Discord bot, satu proses)
 npm run dev
 ```
 
-Output kira-kira:
+Output kira-kira (first-run, sebelum setup):
 
 ```
-[12:34:56] INFO: Webhook server listening port=3000
+╔════════════════════════════════════════════════════════╗
+║   First-run detected — buka setup wizard di browser:   ║
+║   →  http://localhost:3000/setup                       ║
+║   Atau jalanin: npm run setup (auto-buka browser)      ║
+╚════════════════════════════════════════════════════════╝
+```
+
+Output setelah `.env` sudah dikonfigurasi:
+
+```
+[12:34:56] INFO: HTTP server listening port=3000
+[12:34:56] INFO: Admin dashboard ready url=http://localhost:3000/admin
 [12:34:57] INFO: Telegram bot started username=botnot_bot
-[12:34:58] INFO: Discord slash commands registered scope=guild
+[12:34:58] INFO: Discord slash commands registered scope=guild count=10
 [12:34:58] INFO: Discord bot ready tag=botnot#1234
 ```
 
@@ -213,6 +233,8 @@ Buka chat Telegram dengan bot kamu, ketik `/start` &mdash; siap testing!
 
 ## Konfigurasi `.env`
 
+> **Tip:** pakai **[Setup Wizard](#setup-wizard-npm-run-setup)** (`npm run setup`) untuk isi semua ini lewat form web — lebih gampang daripada edit manual.
+
 ```bash
 NODE_ENV=development
 PORT=3000
@@ -230,14 +252,19 @@ DISCORD_BOT_TOKEN=         # dari Developer Portal > Bot
 DISCORD_CLIENT_ID=         # = Application ID
 DISCORD_GUILD_ID=          # opsional, isi untuk dev (slash command instan)
 
-# Admin bot commands (CSV user IDs)
-ADMIN_TELEGRAM_IDS=        # contoh: 12345,67890 (lihat @userinfobot)
-ADMIN_DISCORD_IDS=         # contoh: 1112,3334 (Developer Mode > Copy User ID)
+# Owner — primary admin yg dapet notifikasi event penting (bot online, sales, delivery fail)
+# Owner OTOMATIS termasuk admin, gak perlu didouble di ADMIN_*_IDS.
+OWNER_TELEGRAM_ID=         # numeric ID, dapet dari @userinfobot
+OWNER_DISCORD_ID=          # numeric ID, Developer Mode > Copy User ID
 
-# Admin web dashboard — kosongkan ADMIN_USERNAME untuk disable
+# Admin tambahan (selain owner) untuk bot commands
+ADMIN_TELEGRAM_IDS=        # contoh: 12345,67890
+ADMIN_DISCORD_IDS=         # contoh: 1112,3334
+
+# Admin web dashboard — kosongkan ADMIN_USERNAME untuk disable + auto-aktifin /setup
 ADMIN_USERNAME=
 ADMIN_PASSWORD=
-ADMIN_SESSION_SECRET=      # generate: openssl rand -hex 32
+ADMIN_SESSION_SECRET=      # generate: openssl rand -hex 32 (atau setup wizard auto-gen)
 
 # Database
 DATABASE_URL="file:./dev.db"
@@ -245,6 +272,42 @@ DATABASE_URL="file:./dev.db"
 # Webhook
 PUBLIC_BASE_URL=           # contoh: https://abc123.ngrok.io
 ```
+
+---
+
+## Setup Wizard (`npm run setup`)
+
+Form web di `/setup` untuk ngisi semua env vars tanpa edit `.env` manual.
+
+**Cara pakai:**
+
+```bash
+npm run setup
+```
+
+Yang terjadi:
+1. Auto-create `.env` dari `.env.example` kalau belum ada
+2. Start server
+3. Auto-buka browser ke `http://localhost:3000/setup` (cross-platform: macOS/Linux/Windows)
+4. Form punya section: Server, KlikQRIS, Telegram, Discord, Owner, Admin tambahan, Web Dashboard, Database
+5. Kalau lupa generate session secret, ada tombol **Generate** yang bikin string random
+6. Submit → `.env` lama di-backup (`.env.bak.<timestamp>`) → file baru ditulis dengan format rapi
+7. Pesan konfirmasi muncul, instruksi restart (Ctrl+C → `npm run dev`)
+
+**Kapan setup wizard aktif:**
+
+- Selalu aktif di `NODE_ENV=development` (boleh re-config kapan aja)
+- Aktif kalau `ADMIN_USERNAME` belum diset (first-run detection)
+- **Otomatis disabled** di production yang sudah configured — `/setup` redirect ke `/admin/login`
+
+**Security:**
+
+- Hanya key di allowlist yang ditulis (anti-injection)
+- Validasi minimal (password ≥ 8 karakter, username wajib)
+- Backup `.env` lama sebelum overwrite
+- Sensitive values (token, password, secret) dilog sebagai `<set>` / `<empty>` aja
+
+**Bisa diakses langsung tanpa wizard launcher:** kalau server udah jalan via `npm run dev`, tinggal buka `http://localhost:3000/setup` di browser.
 
 ---
 
@@ -268,6 +331,43 @@ cloudflared tunnel --url http://localhost:3000
 ```
 
 Untuk production: deploy ke VPS / Railway / Fly.io / Render dan pakai domain HTTPS milik kamu.
+
+---
+
+## Owner System
+
+Bot kenal siapa **owner**-nya — primary admin yang dapat perlakuan khusus.
+
+**Setup owner:**
+
+Cukup isi `OWNER_TELEGRAM_ID` dan/atau `OWNER_DISCORD_ID` di `.env` (atau via setup wizard).
+
+```bash
+# Cara dapat numeric user ID:
+# Telegram: chat @userinfobot, dia kirim ID-mu
+# Discord: Settings > Advanced > Developer Mode ON, klik kanan profil > Copy User ID
+OWNER_TELEGRAM_ID=123456789
+OWNER_DISCORD_ID=987654321098765432
+```
+
+**Apa yang owner dapet otomatis:**
+
+| Event | Notifikasi ke owner |
+| --- | --- |
+| Bot online (saat startup) | "Bot Online — siap menerima order" |
+| Order PAID + delivered | "Penjualan baru: produk X x2, Rp50.000, by @user" |
+| Delivery gagal | "Delivery GAGAL — order X, error: ..., cek dashboard" |
+
+**Owner = Admin (otomatis):**
+
+Owner ID otomatis ditambahkan ke daftar admin, jadi punya akses semua admin commands & dashboard tanpa perlu listing dirinya 2x di `ADMIN_*_IDS`.
+
+**Cek role kamu sendiri:**
+
+- Telegram: `/whoami`
+- Discord: `/whoami`
+
+Bot akan reply dengan role kamu (`Owner` / `Admin` / `Customer`) plus user ID + username.
 
 ---
 
@@ -377,19 +477,26 @@ botnot/
 ├── prisma/
 │   ├── schema.prisma         # Product, Stock, Order
 │   └── seed.ts               # contoh data
+├── scripts/
+│   └── setup.mjs             # launcher untuk `npm run setup` (auto-buka browser)
 ├── src/
 │   ├── admin/
-│   │   ├── auth.ts           # admin ID checks
+│   │   ├── auth.ts           # role helpers (owner/admin/customer)
+│   │   ├── owner.ts          # notifyOwner — best-effort DM ke OWNER_*_ID
 │   │   ├── service.ts        # stats, CRUD produk/stok, redeliver
 │   │   └── dashboard/
 │   │       ├── routes.ts     # Fastify routes /admin/*
 │   │       ├── middleware.ts # session cookie auth
 │   │       ├── layout.ts     # shared HTML layout
 │   │       └── pages/        # home, products, stock, orders
+│   ├── setup/
+│   │   ├── routes.ts         # GET/POST /setup (auto-disabled when configured)
+│   │   ├── page.ts           # form HTML (multi-section)
+│   │   └── env-writer.ts     # safe .env update + backup
 │   ├── bots/
-│   │   ├── telegram.ts       # /start /catalog /buy
+│   │   ├── telegram.ts       # /start /catalog /buy /whoami
 │   │   ├── telegram-admin.ts # /admin /stats /orders /addstock dll
-│   │   ├── discord.ts        # slash commands user
+│   │   ├── discord.ts        # slash commands user (/catalog /buy /whoami)
 │   │   ├── discord-admin.ts  # /admin-* slash commands
 │   │   └── registry.ts       # shared bot instances
 │   ├── orders/
@@ -416,10 +523,11 @@ botnot/
 
 | Command                 | Deskripsi                          |
 | ----------------------- | ---------------------------------- |
-| `/start`                | Welcome message + daftar perintah  |
+| `/start`                | Welcome message (greeting beda untuk owner/admin/customer) |
 | `/catalog`              | Lihat semua produk + harga + stok  |
 | `/buy <product_id>`     | Beli 1 unit                        |
 | `/buy <product_id> <n>` | Beli `n` unit                      |
+| `/whoami`               | Cek role kamu (owner/admin/customer) + user ID |
 
 ### Discord
 
@@ -428,6 +536,7 @@ botnot/
 | `/catalog`                               | Lihat semua produk      |
 | `/buy product_id:<id>`                   | Beli 1 unit             |
 | `/buy product_id:<id> qty:<n>`           | Beli `n` unit           |
+| `/whoami`                                | Cek role kamu + user ID |
 
 ### Tambah produk
 
@@ -472,6 +581,8 @@ Atau edit `prisma/seed.ts` lalu jalanin `npm run db:seed`.
 
 - [x] Admin web dashboard (login, products, stock, orders, redeliver)
 - [x] Admin bot commands (Telegram + Discord)
+- [x] Setup wizard (`npm run setup` + `/setup` web form)
+- [x] Owner-aware bots (auto-admin, notifications, `/whoami` command)
 - [x] Retry-safe delivery dengan tombol redeliver di dashboard
 - [ ] Cron auto-expire order yang stuck `PENDING`
 - [ ] Retry queue (BullMQ + Redis) untuk delivery yang gagal

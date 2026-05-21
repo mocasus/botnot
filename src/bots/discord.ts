@@ -19,6 +19,8 @@ import {
   handleAdminCommand,
   isAdminCommand,
 } from "./discord-admin.js";
+import { discordRole } from "../admin/auth.js";
+import { notifyOwner } from "../admin/owner.js";
 
 export async function startDiscordBot(): Promise<void> {
   if (!config.DISCORD_BOT_TOKEN || !config.DISCORD_CLIENT_ID) {
@@ -46,6 +48,10 @@ export async function startDiscordBot(): Promise<void> {
         o.setName("qty").setDescription("Jumlah (default 1)").setMinValue(1),
       )
       .toJSON(),
+    new SlashCommandBuilder()
+      .setName("whoami")
+      .setDescription("Cek role kamu (owner / admin / customer)")
+      .toJSON(),
   ];
 
   const commands = [...userCommands, ...adminCommandDefinitions];
@@ -72,6 +78,8 @@ export async function startDiscordBot(): Promise<void> {
         await handleCatalog(interaction);
       } else if (interaction.commandName === "buy") {
         await handleBuy(interaction);
+      } else if (interaction.commandName === "whoami") {
+        await handleWhoami(interaction);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error";
@@ -85,9 +93,20 @@ export async function startDiscordBot(): Promise<void> {
     }
   });
 
-  client.once(Events.ClientReady, (c) =>
-    logger.info({ tag: c.user.tag }, "Discord bot ready"),
-  );
+  client.once(Events.ClientReady, (c) => {
+    logger.info({ tag: c.user.tag }, "Discord bot ready");
+    if (config.OWNER_DISCORD_ID) {
+      void notifyOwner(
+        [
+          `**Bot Online**`,
+          ``,
+          `Discord bot ${c.user.tag} siap menerima order.`,
+          ``,
+          `Cek /admin-stats atau /whoami untuk cek status.`,
+        ].join("\n"),
+      );
+    }
+  });
 
   registry.discord = client;
   await client.login(config.DISCORD_BOT_TOKEN);
@@ -153,6 +172,35 @@ async function handleBuy(i: ChatInputCommandInteraction): Promise<void> {
     .setImage(`attachment://${fileName}`);
 
   await i.editReply({ embeds: [embed], files: [attachment] });
+}
+
+async function handleWhoami(i: ChatInputCommandInteraction): Promise<void> {
+  const role = discordRole(i.user.id);
+  const labels: Record<typeof role, string> = {
+    owner: "Owner",
+    admin: "Admin",
+    customer: "Customer",
+  };
+  const colors: Record<typeof role, number> = {
+    owner: 0xfaa61a,
+    admin: 0xa78bfa,
+    customer: 0x5865f2,
+  };
+  const extra =
+    role === "owner"
+      ? "\nKamu primary admin. Otomatis dapat notifikasi event penting."
+      : role === "admin"
+        ? "\nKamu admin. Pakai `/admin-stats` untuk overview."
+        : "";
+  const embed = new EmbedBuilder()
+    .setTitle(`Role: ${labels[role]}`)
+    .setColor(colors[role])
+    .addFields(
+      { name: "User ID", value: `\`${i.user.id}\``, inline: true },
+      { name: "Username", value: i.user.username, inline: true },
+    )
+    .setDescription(extra || null);
+  await i.reply({ embeds: [embed], ephemeral: true });
 }
 
 function decodeBase64Image(dataUrl: string): Buffer {
