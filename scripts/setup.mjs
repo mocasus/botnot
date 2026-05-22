@@ -58,6 +58,9 @@ const port = portMatch ? portMatch[1] : "3000";
 const setupUrl = `http://localhost:${port}/setup`;
 
 console.log(`Starting dev server, then opening:\n  → ${setupUrl}\n`);
+console.log("  ℹ  Halaman pertama = Setup Wizard (form config).");
+console.log("  ℹ  Setelah submit form, RESTART server (Ctrl+C → npm run dev)");
+console.log("  ℹ  baru kamu bisa akses /admin dengan desain dashboard barunya.\n");
 
 // === 4. Start server ===
 const server = spawn("npx", ["tsx", "src/index.ts"], {
