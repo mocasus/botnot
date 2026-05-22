@@ -125,7 +125,7 @@
 
 > Butuh **Node.js 20+** dan **npm** (atau pnpm/yarn).
 
-**Cara paling cepat (recommended) — cuma 3 command:**
+**Cara paling cepat (recommended) — 4 command:**
 
 ```bash
 git clone https://github.com/mocasus/botnot.git
@@ -134,12 +134,33 @@ npm install
 npm run setup       # bikin .env, migrate DB, buka browser otomatis ke form config
 ```
 
+### Apa yang akan kamu lihat
+
 `npm run setup` ngerjain ini semua otomatis:
+
 1. Bikin `.env` dari `.env.example` (kalau belum ada)
 2. Migrate database (`prisma db push`)
 3. Start dev server
-4. **Auto-buka browser** ke `http://localhost:3000/setup` — form web untuk isi semua kredensial (KlikQRIS, bot tokens, owner ID, admin login)
-5. Setelah submit form, restart server dengan Ctrl+C → `npm run dev`
+4. **Auto-buka browser** ke `http://localhost:3000/setup` — form web untuk isi semua kredensial
+
+> **Halaman pertama yang muncul = Setup Wizard di `/setup`.**
+> Bukan dashboard. Dashboard baru aktif setelah kamu isi `ADMIN_USERNAME` & `ADMIN_PASSWORD` di form ini, lalu **restart server**.
+
+### Setelah submit form setup
+
+```bash
+# 1. Stop dev server yang lagi jalan
+Ctrl+C
+
+# 2. Restart untuk apply config baru
+npm run dev
+
+# 3. Buka dashboard
+# http://localhost:3000/admin
+# Login pakai username/password yang barusan kamu set
+```
+
+Sekarang baru kamu lihat **Admin Dashboard** dengan desain modern (glass-morphism, dark theme, mobile responsive).
 
 **Cara manual (kalau mau edit `.env` langsung):**
 
@@ -150,6 +171,28 @@ npm run db:push
 npm run db:seed     # opsional: isi contoh produk
 npm run dev
 ```
+
+### Dashboard nggak berubah desainnya?
+
+Kalau habis update kode tapi UI dashboard masih kelihatan lama:
+
+```bash
+# 1. Pastikan branch up-to-date
+git pull origin main
+
+# 2. Reinstall deps (siapa tahu ada lockfile diff)
+npm install
+
+# 3. Hard restart dev server (bukan cuma reload browser)
+Ctrl+C
+npm run dev
+
+# 4. Hard refresh browser
+# Chrome/Edge: Ctrl+Shift+R (Windows) atau Cmd+Shift+R (Mac)
+# Firefox: Ctrl+F5
+```
+
+Browser sering cache TailwindCSS CDN + HTML. Hard refresh wajib.
 
 Output kira-kira (first-run, sebelum setup):
 
