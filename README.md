@@ -23,6 +23,7 @@
 - [Cara Kerja](#cara-kerja)
 - [Tech Stack](#tech-stack)
 - [Quick Start](#quick-start)
+- [Troubleshooting](#troubleshooting)
 - [Cara Dapat Kredensial](#cara-dapat-kredensial)
   - [Telegram Bot Token](#1-telegram-bot-token)
   - [Discord Bot Token](#2-discord-bot-token)
@@ -125,18 +126,16 @@
 
 > Butuh **Node.js 20+** dan **npm** (atau pnpm/yarn).
 
-**Cara paling cepat (recommended) — 4 command:**
+### Cara paling cepat (recommended)
 
 ```bash
 git clone https://github.com/mocasus/botnot.git
 cd botnot
 npm install
-npm run setup       # bikin .env, migrate DB, buka browser otomatis ke form config
+npm run setup
 ```
 
-### Apa yang akan kamu lihat
-
-`npm run setup` ngerjain ini semua otomatis:
+`npm run setup` ngerjain ini otomatis:
 
 1. Bikin `.env` dari `.env.example` (kalau belum ada)
 2. Migrate database (`prisma db push`)
@@ -162,7 +161,7 @@ npm run dev
 
 Sekarang baru kamu lihat **Admin Dashboard** dengan desain modern (glass-morphism, dark theme, mobile responsive).
 
-**Cara manual (kalau mau edit `.env` langsung):**
+### Cara manual (kalau mau edit `.env` langsung)
 
 ```bash
 cp .env.example .env
@@ -172,9 +171,41 @@ npm run db:seed     # opsional: isi contoh produk
 npm run dev
 ```
 
-### Dashboard nggak berubah desainnya?
+### Output yang diharapkan
 
-Kalau habis update kode tapi UI dashboard masih kelihatan lama:
+First-run, sebelum config:
+
+```
+╔════════════════════════════════════════════════════════╗
+║   First-run detected — buka setup wizard di browser:   ║
+║   →  http://localhost:3000/setup                       ║
+║   Atau jalanin: npm run setup (auto-buka browser)      ║
+╚════════════════════════════════════════════════════════╝
+```
+
+Setelah `.env` sudah dikonfigurasi:
+
+```
+[12:34:56] INFO: HTTP server listening port=3000
+[12:34:56] INFO: Admin dashboard ready url=http://localhost:3000/admin
+[12:34:57] INFO: Telegram bot started username=botnot_bot
+[12:34:58] INFO: Discord slash commands registered scope=guild count=10
+[12:34:58] INFO: Discord bot ready tag=botnot#1234
+```
+
+Buka chat Telegram dengan bot kamu, ketik `/start` &mdash; siap testing!
+
+> Stuck di salah satu langkah? Cek **[Troubleshooting](#troubleshooting)** di bawah.
+
+---
+
+## Troubleshooting
+
+Kumpulan masalah yang sering terjadi saat setup lokal.
+
+### Dashboard masih kelihatan desain lama setelah update kode
+
+Browser cache TailwindCSS CDN + HTML cukup agresif, dan dev server kadang gak refresh penuh.
 
 ```bash
 # 1. Pastikan branch up-to-date
@@ -187,34 +218,135 @@ npm install
 Ctrl+C
 npm run dev
 
-# 4. Hard refresh browser
-# Chrome/Edge: Ctrl+Shift+R (Windows) atau Cmd+Shift+R (Mac)
-# Firefox: Ctrl+F5
+# 4. Hard refresh browser (WAJIB)
+# Chrome/Edge: Ctrl+Shift+R (Windows) / Cmd+Shift+R (Mac)
+# Firefox:    Ctrl+F5         (Windows) / Cmd+Shift+R (Mac)
 ```
 
-Browser sering cache TailwindCSS CDN + HTML. Hard refresh wajib.
+Masih bandel? Buka DevTools &rarr; tab **Network** &rarr; centang **Disable cache** &rarr; reload sambil DevTools tetap kebuka.
 
-Output kira-kira (first-run, sebelum setup):
+### `Error: Environment variable not found: DATABASE_URL`
+
+Muncul saat jalanin `npm run db:push` atau `prisma db push`. Artinya Prisma CLI gak nemu `DATABASE_URL` di `.env`.
+
+```bash
+# 1. Pastikan .env ada (bukan cuma .env.example)
+ls -la .env
+
+# 2. Kalau belum ada, copy dari .env.example
+cp .env.example .env       # macOS/Linux
+copy .env.example .env     # Windows
+
+# 3. Pastikan DATABASE_URL di .env tidak kosong
+# Default value yang aman:
+# DATABASE_URL="file:./dev.db"
+
+# 4. Jalanin lagi
+npm run db:push
+```
+
+> Cara paling gampang: pakai `npm run setup` yang auto-handle ini semua.
+
+### `npm error Missing script: "setup"`
+
+Berarti `package.json` di folder kamu **bukan versi terbaru**. Mungkin kamu clone dari fork lama atau release sebelum setup wizard ditambahkan.
+
+```bash
+# Pastikan kamu di-track ke repo yang benar dengan branch main terbaru
+git remote -v
+# Output yang benar:
+# origin  https://github.com/mocasus/botnot.git (fetch)
+
+# Pull update terbaru
+git fetch origin main
+git checkout main
+git pull origin main
+
+# Verify scripts ada
+cat package.json | grep -A2 '"setup"'
+# Harus muncul:  "setup": "node scripts/setup.mjs",
+```
+
+### `npm run setup` gagal buka browser
+
+Beberapa setup di Linux server (tanpa GUI) atau WSL gak punya `xdg-open` / `open` / `start`.
+
+Buka manual aja di browser kamu:
 
 ```
-╔════════════════════════════════════════════════════════╗
-║   First-run detected — buka setup wizard di browser:   ║
-║   →  http://localhost:3000/setup                       ║
-║   Atau jalanin: npm run setup (auto-buka browser)      ║
-╚════════════════════════════════════════════════════════╝
+http://localhost:3000/setup
 ```
 
-Output setelah `.env` sudah dikonfigurasi:
+URL-nya juga di-print di terminal saat script jalan.
+
+### Bot Telegram/Discord gak online
+
+Cek log saat startup:
 
 ```
-[12:34:56] INFO: HTTP server listening port=3000
-[12:34:56] INFO: Admin dashboard ready url=http://localhost:3000/admin
-[12:34:57] INFO: Telegram bot started username=botnot_bot
-[12:34:58] INFO: Discord slash commands registered scope=guild count=10
-[12:34:58] INFO: Discord bot ready tag=botnot#1234
+[INFO] Telegram bot disabled — TELEGRAM_BOT_TOKEN not set
+[INFO] Discord bot disabled — DISCORD_BOT_TOKEN not set
 ```
 
-Buka chat Telegram dengan bot kamu, ketik `/start` &mdash; siap testing!
+Berarti token belum diisi di `.env`. Buka `/setup` (lewat browser, server tetep jalan) untuk isi token, lalu restart server.
+
+Kalau token sudah diisi tapi error:
+
+- **Telegram**: `401 Unauthorized` &rarr; token salah / di-revoke. Generate baru di [@BotFather](https://t.me/BotFather) (`/revoke` lalu `/token`).
+- **Discord**: `Used disallowed intents` &rarr; aktifkan **Privileged Gateway Intents** di Developer Portal &rarr; Bot &rarr; centang `Message Content Intent` (kalau dibutuhkan).
+
+### Webhook KlikQRIS gak masuk (order stuck di `PENDING`)
+
+Order tetap `PENDING` walau pembeli udah bayar = webhook gak nyampe ke server kamu.
+
+```bash
+# 1. Pastikan PUBLIC_BASE_URL di .env benar
+# Untuk dev pakai ngrok:
+ngrok http 3000
+# copy URL https://xxxx.ngrok.io ke PUBLIC_BASE_URL di .env
+
+# 2. Daftarkan webhook URL di dashboard merchant KlikQRIS:
+# https://xxxx.ngrok.io/webhook/klikqris
+
+# 3. Test webhook nyampe atau gak — buka log server saat ada pembayaran
+# Harus muncul:
+# [INFO] Webhook received order_id=...
+```
+
+> Pakai `ngrok inspect` (otomatis di `http://127.0.0.1:4040`) untuk lihat request yang masuk.
+
+### Port 3000 sudah dipakai aplikasi lain
+
+```bash
+# macOS/Linux
+lsof -i :3000
+kill -9 <PID>
+
+# Windows
+netstat -ano | findstr :3000
+taskkill /PID <PID> /F
+```
+
+Atau ubah port di `.env`: `PORT=3001`, lalu restart.
+
+### Database SQLite corrupt / mau reset
+
+```bash
+# Hapus file DB (data hilang!)
+rm prisma/dev.db prisma/dev.db-journal
+
+# Re-create + migrate
+npm run db:push
+npm run db:seed   # opsional, untuk data contoh
+```
+
+### Masih nggak ketemu solusinya?
+
+Buka [Issue baru](https://github.com/mocasus/botnot/issues/new) dengan info:
+- Output `node --version` dan `npm --version`
+- OS (Windows/macOS/Linux + versi)
+- Output error lengkap (copy paste dari terminal, jangan cuma screenshot)
+- Step yang udah dicoba
 
 ---
 
