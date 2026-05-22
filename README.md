@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./assets/logo.svg" alt="botnot" width="720">
+  <img src="./assets/banner.svg" alt="botnot" width="720">
 </p>
 
 <p align="center">
