@@ -23,6 +23,7 @@
 - [Cara Kerja](#cara-kerja)
 - [Tech Stack](#tech-stack)
 - [Quick Start](#quick-start)
+- [Setup Repo GitHub](#setup-repo-github-untuk-fork) — buat preview embed yang muncul saat di-share
 - [Cara Dapat Kredensial](#cara-dapat-kredensial)
   - [Telegram Bot Token](#1-telegram-bot-token)
   - [Discord Bot Token](#2-discord-bot-token)
@@ -215,6 +216,96 @@ Output setelah `.env` sudah dikonfigurasi:
 ```
 
 Buka chat Telegram dengan bot kamu, ketik `/start` &mdash; siap testing!
+
+---
+
+## Setup Repo GitHub (untuk fork)
+
+Kalau kamu **fork** repo ini, default tampilan saat link repo di-share di Discord / Twitter / WhatsApp / Telegram cuma muncul nama repo + URL polos, tanpa preview gambar atau deskripsi yang menarik. Itu karena GitHub default-nya tidak meng-generate Open Graph image otomatis.
+
+Berikut langkah-langkah biar repo kamu punya **preview embed yang bagus** saat di-share:
+
+### 1. Set "About" section (deskripsi + topics + website)
+
+Buka `https://github.com/<username>/botnot` &rarr; klik gear icon ⚙️ di samping **About** (kanan atas, pojok header repo).
+
+**Description:**
+
+```
+Auto-order Telegram & Discord bot dengan integrasi KlikQRIS. Pelanggan scan QR, produk auto-deliver ke DM. Built with TypeScript, Fastify, Prisma.
+```
+
+**Website:** *(opsional, kalau ada demo / landing page)*
+
+```
+https://klikqris.com
+```
+
+**Topics** (pisahkan dengan spasi):
+
+```
+telegram-bot discord-bot qris klikqris indonesia auto-deliver typescript prisma fastify nodejs payment-gateway
+```
+
+**Centang:**
+- ✅ Releases
+- ✅ Packages (kalau pakai)
+- (Optional) Deployments
+
+Klik **Save changes**.
+
+> Topics bantu repo kamu muncul di hasil pencarian GitHub. Description muncul sebagai subtitle saat link repo di-share.
+
+### 2. Upload Social Preview image
+
+Ini yang paling penting — **gambar 1280×640px** yang muncul sebagai card preview saat link repo di-paste di Discord / Twitter / Telegram / WhatsApp.
+
+1. Settings &rarr; **General** (default tab) &rarr; scroll ke section **Social preview**
+2. Klik **Edit** &rarr; **Upload an image...**
+3. Pilih file `assets/social-preview.png` dari repo ini *(sudah disediakan, 1280×640, design konsisten dengan dashboard)*
+4. Klik **Save**
+
+> Kalau mau bikin custom social preview pakai branding kamu sendiri, edit `assets/social-preview.svg`, lalu convert ke PNG:
+> ```bash
+> # Install cairosvg
+> pip install cairosvg
+>
+> # Convert SVG -> PNG (1280x640 sesuai standar GitHub)
+> python3 -c "
+> import cairosvg
+> cairosvg.svg2png(url='assets/social-preview.svg',
+>                  write_to='assets/social-preview.png',
+>                  output_width=1280, output_height=640)
+> "
+> ```
+
+### 3. Test preview-nya
+
+Setelah upload, test apakah preview-nya jalan:
+
+- **Discord**: paste URL repo di chat, tunggu ~5 detik
+- **Twitter / X**: pakai [Card Validator](https://cards-dev.twitter.com/validator)
+- **Facebook / WhatsApp**: pakai [Sharing Debugger](https://developers.facebook.com/tools/debug/)
+- **Telegram**: paste URL di chat (kalau belum muncul, send `/setlinkpreview` dulu)
+- **LinkedIn**: pakai [Post Inspector](https://www.linkedin.com/post-inspector/)
+
+### Cache
+
+GitHub & social media platforms cache image cukup agresif. Kalau habis update social preview tapi belum berubah:
+
+- **GitHub camo cache**: tunggu 5-10 menit, atau force refresh dengan rename file (`social-preview-v2.png`) lalu re-upload
+- **Twitter / Facebook**: pakai validator/debugger untuk force re-fetch
+- **Discord**: cache per-channel, biasanya 1-2 jam. Edit pesan atau paste di channel lain untuk test
+- **Browser cache**: hard refresh (`Ctrl+Shift+R` / `Cmd+Shift+R`)
+
+### Hasil yang diharapkan
+
+Setelah setup, link `https://github.com/<username>/botnot` di-share akan muncul sebagai card berisi:
+
+- 🖼️ Gambar preview 1280×640 (botnot branding + tagline)
+- 📝 Title: `<username>/botnot`
+- 📄 Description: `Auto-order Telegram & Discord bot dengan integrasi KlikQRIS...`
+- 🔗 Link: `github.com`
 
 ---
 
@@ -539,7 +630,9 @@ Semua command admin pakai prefix `/admin-`. Hanya bisa diakses oleh user yang ad
 ```
 botnot/
 ├── assets/
-│   └── logo.svg
+│   ├── logo.svg              # Banner README
+│   ├── social-preview.svg    # Social preview source (edit di sini)
+│   └── social-preview.png    # Upload ini ke GitHub Settings
 ├── prisma/
 │   ├── schema.prisma         # Product, Stock, Order
 │   └── seed.ts               # contoh data
