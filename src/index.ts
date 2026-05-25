@@ -1,21 +1,62 @@
 import Fastify from "fastify";
-import { config } from "./config.js";
+import cookie from "@fastify/cookie";
+import formbody from "@fastify/formbody";
+import rateLimit from "@fastify/rate-limit";
+import {
+  config,
+  isDashboardConfigured,
+  isFirstRun,
+  isKlikqrisConfigured,
+} from "./config.js";
 import { logger } from "./logger.js";
 import { registerWebhookRoutes } from "./payment/webhook.js";
+import { registerAdminDashboardRoutes } from "./admin/dashboard/routes.js";
+import { registerSetupRoutes } from "./setup/routes.js";
 import { startTelegramBot } from "./bots/telegram.js";
 import { startDiscordBot } from "./bots/discord.js";
+import { startExpireOrdersCron, stopExpireOrdersCron } from "./cron/expire-orders.js";
 import { prisma } from "./db.js";
 
 async function main() {
   const app = Fastify({
-    // pakai pino instance kita biar log seragam
-    loggerInstance: logger,
+    // Disable Fastify HTTP logging — kita pakai pino logger langsung di route handlers.
+    logger: false,
+    trustProxy: true, // supaya rate-limit pakai IP asli di belakang reverse proxy
   });
+
+  // Plugin: parse application/x-www-form-urlencoded (untuk admin dashboard + setup forms)
+  await app.register(formbody);
+
+  // Plugin: signed cookies untuk session admin dashboard
+  await app.register(cookie, {
+    secret: config.ADMIN_SESSION_SECRET,
+  });
+
+  // Plugin: rate limiter — global default loose, route-specific tight di /admin/login
+  await app.register(rateLimit, {
+    global: false, // hanya route yang explicit-in via { config: { rateLimit: ... } }
+    keyGenerator: (req) => req.ip,
+  });
+
+  // Setup wizard (auto-disabled di production yg sudah configured)
+  registerSetupRoutes(app);
 
   registerWebhookRoutes(app);
 
+  if (isDashboardConfigured()) {
+    registerAdminDashboardRoutes(app);
+    logger.info("Admin dashboard enabled at /admin");
+  } else {
+    logger.warn("Admin dashboard disabled (ADMIN_USERNAME/ADMIN_PASSWORD belum diset)");
+  }
+
   await app.listen({ host: "0.0.0.0", port: config.PORT });
-  logger.info({ port: config.PORT }, "Webhook server listening");
+  logger.info({ port: config.PORT }, "HTTP server listening");
+
+  printStartupBanner();
+
+  // Start background cron untuk auto-expire order PENDING yang sudah lewat waktu
+  startExpireOrdersCron();
 
   // Start kedua bot paralel; masing-masing kerja sendiri.
   await Promise.all([startTelegramBot(), startDiscordBot()]);
@@ -23,6 +64,7 @@ async function main() {
   const shutdown = async (signal: string) => {
     logger.info({ signal }, "Shutting down...");
     try {
+      stopExpireOrdersCron();
       await app.close();
       await prisma.$disconnect();
     } catch (err) {
@@ -33,6 +75,50 @@ async function main() {
   };
   process.on("SIGINT", () => void shutdown("SIGINT"));
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
+}
+
+function printStartupBanner() {
+  const baseUrl = `http://localhost:${config.PORT}`;
+
+  if (isFirstRun()) {
+    // Banner besar untuk first-run user — direct ke setup wizard.
+    // eslint-disable-next-line no-console
+    console.log(
+      [
+        "",
+        "╔════════════════════════════════════════════════════════╗",
+        "║                                                        ║",
+        "║   First-run detected — buka setup wizard di browser:   ║",
+        "║                                                        ║",
+        `║   →  ${pad(`${baseUrl}/setup`, 50)}║`,
+        "║                                                        ║",
+        "║   Atau jalanin: npm run setup (auto-buka browser)      ║",
+        "║                                                        ║",
+        "╚════════════════════════════════════════════════════════╝",
+        "",
+      ].join("\n"),
+    );
+  } else {
+    if (!isKlikqrisConfigured()) {
+      logger.warn(
+        "KlikQRIS belum dikonfigurasi (KLIKQRIS_API_KEY / KLIKQRIS_MERCHANT_ID kosong). " +
+          "Bot tetap jalan, tapi /buy akan gagal sampai diisi. Edit /setup untuk update.",
+      );
+    }
+    if (
+      config.ADMIN_SESSION_SECRET === "change-me-in-production-please" &&
+      config.NODE_ENV === "production"
+    ) {
+      logger.warn(
+        "ADMIN_SESSION_SECRET masih default. Generate yang random untuk production: openssl rand -hex 32",
+      );
+    }
+    logger.info({ url: `${baseUrl}/admin` }, "Admin dashboard ready");
+  }
+}
+
+function pad(s: string, width: number): string {
+  return s + " ".repeat(Math.max(0, width - s.length));
 }
 
 main().catch((err) => {
